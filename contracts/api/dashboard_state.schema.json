@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FamilyDashboardState",
+  "type": "object",
+  "required": [
+    "theme",
+    "childName",
+    "schoolLabel",
+    "departureTime",
+    "prepStartTime",
+    "stepsCompleted",
+    "lastStampedDate",
+    "location",
+    "soundEnabled",
+    "ttsEnabled",
+    "customImages"
+  ],
+  "properties": {
+    "theme": {
+      "type": "string",
+      "enum": ["babyshark", "pororo"],
+      "description": "부모 설정 창에서만 전환 가능한 대시보드 테마"
+    },
+    "childName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+    },
+    "schoolLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+    },
+    "departureTime": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+    },
+    "prepStartTime": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+    },
+    "stepsCompleted": {
+      "type": "array",
+      "items": { "type": "boolean" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "lastStampedDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "location": {
+      "type": "object",
+      "required": ["id", "name", "lat", "lon"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "lat": { "type": "number" },
+        "lon": { "type": "number" }
+      }
+    },
+    "soundEnabled": { "type": "boolean" },
+    "ttsEnabled": { "type": "boolean" },
+    "customImages": {
+      "type": "object",
+      "properties": {
+        "mascot": { "type": ["string", "null"] },
+        "stamp": { "type": ["string", "null"] },
+        "step1": { "type": ["string", "null"] },
+        "step2": { "type": ["string", "null"] },
+        "step3": { "type": ["string", "null"] },
+        "step4": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

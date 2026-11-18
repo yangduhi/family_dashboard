@@ -1,0 +1,31 @@
+[project_control]
+config_version = 1
+runtime_version = "0.1.2"
+records_adapter = "filesystem"
+python_executable = "D:/vscode/project-control/.venv/Scripts/python.exe"
+
+[paths]
+managed_globs = ["src/**", "web/**", "tests/**", "docs/**", "contracts/**", "config/**", "design/**", "pyproject.toml"]
+excluded_globs = [".venv/**", "node_modules/**", ".git/**", "dist/**", ".artifacts/**", ".context/**", "work/**", "evidence/**", "DASHBOARD.md", "TASK.md", "docs/INDEX.md", "docs/reference/**", "**/__pycache__/**", "**/.pytest_cache/**"]
+required_globs = ["docs/product/PRD.md", "docs/features/*.md"]
+derived_globs = ["DASHBOARD.md", "TASK.md", "docs/INDEX.md", "docs/reference/**", ".context/**"]
+doc_roots = ["docs/features", "docs/product", "docs/system"]
+api_contracts = ["contracts/api/*.json"]
+design_baselines = "design/baselines"
+feature_exempt_globs = ["docs/**", "config/**", "contracts/**", "pyproject.toml", "design/**"]
+
+[checks.fullstack_smoke]
+command = ["{python}", "-m", "pytest", "tests", "-q", "-p", "no:cacheprovider"]
+cwd = "."
+required = true
+timeout_seconds = 120
+receipt_file = "fullstack_receipt.json"
+depends_on = ["src/**", "web/**", "tests/**", "contracts/**"]
+
+[harness]
+adapter = "visual_diff"
+ads_gates_applicable = false
+ads_not_applicable_rationale = "초기 풀스택 프리셋으로 시각 기준선(B0) 승격 전까지 루프백 HTTP 및 UI HTML 응답 스모크 테스트로 대체 검증"
+visual_tolerance = 16
+fail_above = 0.01
+baseline_dir = "design/baselines"
