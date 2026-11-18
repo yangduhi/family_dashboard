@@ -720,7 +720,14 @@ function initDashboardApp() {
         ctaBtn.type = "button";
         ctaBtn.className = "stamp-cta-btn";
         ctaBtn.textContent = "👆 완료! 도장 찍기";
+        let pressedPointerId = null;
+        ctaBtn.addEventListener("pointerdown", (e) => {
+          pressedPointerId = e.pointerId;
+        });
         ctaBtn.addEventListener("click", (e) => {
+          // A completed undo hold can place this button under the released pointer.
+          if (e.pointerType && e.pointerId !== pressedPointerId) return;
+          pressedPointerId = null;
           e.stopPropagation();
           handleStepStamp(idx, card);
         });
@@ -953,22 +960,23 @@ function initDashboardApp() {
     }
   );
 
-  // Fallback light-dismiss when <dialog closedby="any"> is unsupported
-  if (!("closedBy" in HTMLDialogElement.prototype)) {
-    const outside = (e, dialog) => {
-      const r = dialog.getBoundingClientRect();
-      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-    };
-    let pressedOutside = false;
-    els.parentDialog.addEventListener("pointerdown", (e) => {
-      pressedOutside = outside(e, els.parentDialog);
-    });
-    els.parentDialog.addEventListener("pointerup", (e) => {
-      if (pressedOutside && outside(e, els.parentDialog)) els.parentDialog.close();
-    });
-  }
+  // The touch that opened the dialog must finish without dismissing it.
+  const isOutsideParentDialog = (e) => {
+    const rect = els.parentDialog.getBoundingClientRect();
+    return e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+  };
+  let backdropPointerId = null;
+  els.parentDialog.addEventListener("pointerdown", (e) => {
+    backdropPointerId = isOutsideParentDialog(e) ? e.pointerId : null;
+  });
+  els.parentDialog.addEventListener("pointerup", (e) => {
+    const startedOnBackdrop = backdropPointerId === e.pointerId;
+    backdropPointerId = null;
+    if (startedOnBackdrop && isOutsideParentDialog(e)) els.parentDialog.close();
+  });
 
   els.parentDialog.addEventListener("close", () => {
+    backdropPointerId = null;
     els.parentDialog.returnValue = "";
   });
 
