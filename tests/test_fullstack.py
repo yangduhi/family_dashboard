@@ -29,6 +29,7 @@ from app.server import (
 def test_default_and_validate_dashboard_state() -> None:
     state = default_dashboard_state("2026-11-18")
     assert state["theme"] == "babyshark"
+    assert state["childName"] == "채원이"
     assert state["stepsCompleted"] == [False, False, False, False]
     assert state["lastStampedDate"] == "2026-11-18"
     assert state["departureTime"] == "08:50"
@@ -40,8 +41,13 @@ def test_default_and_validate_dashboard_state() -> None:
     assert updated["location"] == FIXED_LOCATION
 
     migrated = validate_dashboard_state(
-        {**state, "location": {"id": "seoul", "name": "서울 중구", "lat": 37.5665, "lon": 126.9780}}
+        {
+            **state,
+            "childName": "우리 딸",
+            "location": {"id": "seoul", "name": "서울 중구", "lat": 37.5665, "lon": 126.9780},
+        }
     )
+    assert migrated["childName"] == "채원이"
     assert migrated["location"] == FIXED_LOCATION
 
     with pytest.raises(ValueError):
@@ -183,10 +189,11 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert "select-location" not in html and "selectLocation" not in app_js
     assert "fixed-location-badge" in html and "서울 강동구 상일동" in html
     assert "media-pool-grid" in html and "서울 강동구 상일동" in assets_js
+    assert "채원이" in html and "어린이집" in assets_js
     assert "아기상어" in html and "뽀로로" in html
     assert "아침 먹기" in assets_js and "세수·양치" in assets_js and "옷 입기" in assets_js and "가방 챙기기" in assets_js
     assert "1500" in app_js and "3000" in app_js
-    assert "stamp-slam" in css and "touch-action: none" in css
+    assert "stamp-slam" in css and "touch-action: none" in css and "grayscale(" in css
 
     # Relative PWA paths for subpath HTTPS hosting (GitHub Pages / Cloudflare Pages)
     assert 'href="./manifest.json"' in html
@@ -244,9 +251,10 @@ import {{
 assert.equal(UNDO_HOLD_MS, 1500);
 assert.equal(PARENT_HOLD_MS, 3000);
 
-// 1. Daily reset on date change & fixed location migration
+// 1. Daily reset on date change & fixed location + childName migration
 const yesterday = {{
   theme: 'pororo',
+  childName: '우리 딸',
   stepsCompleted: [true, true, false, false],
   lastStampedDate: '2026-11-17',
   location: {{ id: 'seoul', name: '서울 중구', lat: 37.5665, lon: 126.978 }},
@@ -255,6 +263,7 @@ const todayReset = normalizeDailyState(yesterday, '2026-11-18');
 assert.deepEqual(todayReset.stepsCompleted, [false, false, false, false]);
 assert.equal(todayReset.lastStampedDate, '2026-11-18');
 assert.equal(todayReset.theme, 'pororo');
+assert.equal(todayReset.childName, '채원이');
 assert.deepEqual(todayReset.location, {{
   id: 'gangdong-sangil',
   name: '서울 강동구 상일동',

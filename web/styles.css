@@ -488,8 +488,8 @@ svg {
 }
 
 .daycare-icon {
-  inline-size: 56px;
-  block-size: 50px;
+  inline-size: 64px;
+  block-size: 56px;
 }
 
 .departure-badge {
@@ -521,25 +521,43 @@ svg {
   justify-items: center;
   gap: clamp(6px, 0.9dvh, 10px);
   box-shadow: var(--shadow-card);
-  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
   min-block-size: 0;
 }
 
 .step-card.is-active {
-  border-width: 4px;
+  z-index: 3;
+  border-width: 5px;
   border-color: var(--active-border);
-  box-shadow: var(--active-glow);
-  transform: translateY(-2px);
+  background: linear-gradient(180deg, #ffffff 0%, #fffde7 100%);
+  box-shadow: var(--active-glow), 0 14px 28px rgba(0, 0, 0, 0.14);
+  transform: translateY(-4px) scale(1.02);
+}
+
+.step-card.is-active .stamp-cta-btn {
+  box-shadow: 0 4px 0 var(--accent-cta-border), 0 0 16px rgba(255, 193, 7, 0.55);
 }
 
 .step-card.is-done {
+  opacity: 0.68;
+  filter: saturate(0.75);
+  transform: scale(0.98);
   background: var(--done-tint);
   border-color: var(--accent-primary);
 }
 
+.cards-grid:not(:has(.step-card.is-active)) .step-card.is-done {
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+
 .step-card.is-locked {
-  opacity: 0.72;
-  background: rgba(255, 255, 255, 0.88);
+  opacity: 0.46;
+  filter: grayscale(0.38);
+  transform: scale(0.97);
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .step-card-head {

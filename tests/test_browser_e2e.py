@@ -152,6 +152,8 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
 
             page.goto(base_url, wait_until="domcontentloaded")
             expect(page.locator("#weather-cond")).to_contain_text("서울 강동구 상일동", timeout=5000)
+            expect(page.locator("#cheer-bubble")).to_contain_text("채원이")
+            expect(page.locator("#daycare-icon svg")).to_contain_text("어린이집")
             assert any("latitude=37.5566&longitude=127.1654" in u for u in weather_urls), weather_urls
 
             cards = page.locator(".step-card")
@@ -159,6 +161,8 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
             card0 = cards.nth(0)
             card1 = cards.nth(1)
             expect(card0).to_have_class(re.compile(r"\bis-active\b"))
+            assert float(card0.evaluate("el => getComputedStyle(el).opacity")) == 1.0
+            assert float(card1.evaluate("el => getComputedStyle(el).opacity")) < 0.6
 
             # 1. Child lock: locked cards 2..4 have pointer-events: none and ignore taps
             for idx in (1, 2, 3):
@@ -232,6 +236,10 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
             # Direct slot multi-file upload (arbitrary filename without step keyword)
             page.locator('input[data-pool-step="step2"]').set_input_files(str(slot_png_path))
             expect(page.locator(".media-pool-card").nth(1)).to_contain_text("1개", timeout=5000)
+
+            # Babyshark only has 1 item per step -> reroll status warns clearly instead of pretending it changed
+            page.locator("#btn-reroll-media").click()
+            expect(page.locator("#media-pool-status")).to_contain_text("단계별로 1개만 있어 바꿀 다른 그림이 없습니다")
 
             # Section 6 direct GIF upload with empty MIME preserves data:image/gif (never flattened to JPEG)
             empty_mime_gif = tmp_path / "direct_slot.gif"

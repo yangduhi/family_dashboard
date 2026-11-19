@@ -54,7 +54,7 @@ export function formatDateISO(date = new Date()) {
 export function createDefaultState(todayStr = formatDateISO()) {
   return {
     theme: "babyshark",
-    childName: "우리 딸",
+    childName: "채원이",
     schoolLabel: "어린이집",
     departureTime: "08:50",
     prepStartTime: "07:50",
@@ -88,6 +88,11 @@ export function normalizeDailyState(rawState, todayStr = formatDateISO()) {
   };
   if (state.theme !== "babyshark" && state.theme !== "pororo") {
     state.theme = "babyshark";
+  }
+  if (!state.childName || typeof state.childName !== "string" || state.childName.trim() === "우리 딸") {
+    state.childName = "채원이";
+  } else {
+    state.childName = state.childName.trim().slice(0, 20) || "채원이";
   }
   if (!Array.isArray(state.stepsCompleted) || state.stepsCompleted.length !== 4) {
     state.stepsCompleted = [false, false, false, false];
@@ -1283,7 +1288,7 @@ function initDashboardApp() {
   function applyParentFormChanges() {
     persistState({
       ...state,
-      childName: (els.inputChildName.value || "우리 딸").trim().slice(0, 20),
+      childName: (els.inputChildName.value || "채원이").trim().slice(0, 20),
       schoolLabel: (els.inputSchoolLabel.value || "어린이집").trim().slice(0, 20),
       prepStartTime: els.inputPrepStart.value || state.prepStartTime,
       departureTime: els.inputDepartureTime.value || state.departureTime,
@@ -1368,11 +1373,26 @@ function initDashboardApp() {
 
   if (els.btnRerollMedia) {
     els.btnRerollMedia.addEventListener("click", () => {
+      const themeBuckets = mediaPoolCache[state.theme] || createEmptyMediaBuckets();
+      const counts = STEP_IDS.map((stepId) => (themeBuckets[stepId] || []).length);
+      const totalItems = counts.reduce((acc, n) => acc + n, 0);
+      const rerollableSteps = counts.filter((n) => n >= 2).length;
+      const fixedSteps = STEP_IDS.filter((stepId) => Boolean(state.customImages[stepId])).length;
+
       rollStepMediaSelection("manual-reroll");
       renderAll();
       renderParentModalValues();
+
       if (els.mediaPoolStatus) {
-        els.mediaPoolStatus.textContent = `${THEMES[state.theme].name} 테마 그림을 새로 뽑았습니다.`;
+        const themeName = THEMES[state.theme].name;
+        if (totalItems === 0) {
+          els.mediaPoolStatus.textContent = `${themeName} 테마에 등록된 행동 그림이 없습니다. 먼저 ZIP이나 파일을 추가해 주세요.`;
+        } else if (rerollableSteps === 0) {
+          els.mediaPoolStatus.textContent = `${themeName} 테마는 단계별로 1개만 있어 바꿀 다른 그림이 없습니다. (2개 이상 등록 시 랜덤 변경)`;
+        } else {
+          const fixedNote = fixedSteps > 0 ? ` (섹션 6 고정 그림 ${fixedSteps}개는 유지됨)` : "";
+          els.mediaPoolStatus.textContent = `${themeName} 테마 그림을 새로 뽑았습니다.${fixedNote}`;
+        }
       }
     });
   }

@@ -55,7 +55,7 @@ def default_dashboard_state(today_str: str | None = None) -> dict[str, Any]:
     day = today_str or dt.date.today().isoformat()
     return {
         "theme": "babyshark",
-        "childName": "우리 딸",
+        "childName": "채원이",
         "schoolLabel": "어린이집",
         "departureTime": "08:50",
         "prepStartTime": "07:50",
@@ -95,6 +95,8 @@ def validate_dashboard_state(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Invalid theme {theme!r}; expected one of {SUPPORTED_THEMES}")
 
     child_name = _require_str(merged["childName"], "childName", min_len=1, max_len=20)
+    if child_name == "우리 딸":
+        child_name = "채원이"
     school_label = _require_str(merged["schoolLabel"], "schoolLabel", min_len=1, max_len=20)
 
     departure_time = merged["departureTime"]

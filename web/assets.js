@@ -15,18 +15,36 @@ export const FIXED_LOCATION = Object.freeze({
 export const LOCATIONS = [FIXED_LOCATION];
 
 export const DAYCARE_SVG = `
-<svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <ellipse cx="50" cy="83" rx="42" ry="5" fill="#d7e8d0"/>
-  <rect x="16" y="38" width="68" height="42" rx="6" fill="#fff7e6" stroke="#8d6e63" stroke-width="3"/>
-  <path d="M10 42 L50 14 L90 42 Z" fill="#ff7043" stroke="#8d6e63" stroke-width="3" stroke-linejoin="round"/>
-  <rect x="44" y="5" width="4" height="14" fill="#8d6e63"/>
-  <path d="M48 6 L66 11 L48 16 Z" fill="#ffd54f" stroke="#8d6e63" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="50" cy="29" r="7" fill="#fff" stroke="#8d6e63" stroke-width="2.5"/>
-  <path d="M50 25 V29 L53 31" stroke="#5d4037" stroke-width="2" stroke-linecap="round" fill="none"/>
-  <rect x="23" y="48" width="14" height="14" rx="3" fill="#81d4fa" stroke="#8d6e63" stroke-width="2.5"/>
-  <rect x="63" y="48" width="14" height="14" rx="3" fill="#81d4fa" stroke="#8d6e63" stroke-width="2.5"/>
-  <path d="M42 80 V56 A8 8 0 0 1 58 56 V80 Z" fill="#ffb74d" stroke="#8d6e63" stroke-width="2.5"/>
-  <circle cx="54" cy="68" r="2" fill="#5d4037"/>
+<svg viewBox="0 0 116 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <!-- Soft rainbow behind daycare -->
+  <path d="M18 46 A40 34 0 0 1 98 46" fill="none" stroke="#ff8a65" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M24 46 A34 28 0 0 1 92 46" fill="none" stroke="#ffd54f" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M30 46 A28 22 0 0 1 86 46" fill="none" stroke="#81d4fa" stroke-width="4.5" stroke-linecap="round"/>
+  <!-- Lawn -->
+  <ellipse cx="58" cy="87" rx="50" ry="6" fill="#aed581"/>
+  <!-- Main cozy daycare building -->
+  <rect x="20" y="42" width="76" height="42" rx="10" fill="#fff8e1" stroke="#6d4c41" stroke-width="3"/>
+  <!-- Striped scalloped awning roof -->
+  <path d="M12 44 Q18 28 28 28 H88 Q98 28 104 44 Z" fill="#4dd0e1" stroke="#6d4c41" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M30 28 L26 44 H42 L44 28 Z" fill="#ffffff" opacity="0.65"/>
+  <path d="M58 28 L58 44 H74 L72 28 Z" fill="#ffffff" opacity="0.65"/>
+  <path d="M86 28 L90 44 H104 L96 28 Z" fill="#ffab91" opacity="0.85"/>
+  <!-- Signboard: 어린이집 -->
+  <rect x="28" y="13" width="60" height="19" rx="9.5" fill="#fff59d" stroke="#6d4c41" stroke-width="2.5"/>
+  <text x="58" y="26.5" text-anchor="middle" font-size="11.5" font-weight="900" fill="#5d4037" font-family="Pretendard, Noto Sans KR, sans-serif">어린이집</text>
+  <!-- Cute rounded windows with flower boxes -->
+  <rect x="27" y="51" width="17" height="15" rx="4" fill="#b3e5fc" stroke="#6d4c41" stroke-width="2.4"/>
+  <rect x="72" y="51" width="17" height="15" rx="4" fill="#b3e5fc" stroke="#6d4c41" stroke-width="2.4"/>
+  <!-- Double arch door -->
+  <path d="M49 84 V59 A9 9 0 0 1 67 59 V84 Z" fill="#ffb74d" stroke="#6d4c41" stroke-width="2.5"/>
+  <line x1="58" y1="50" x2="58" y2="84" stroke="#6d4c41" stroke-width="2"/>
+  <circle cx="55" cy="70" r="1.6" fill="#5d4037"/>
+  <circle cx="61" cy="70" r="1.6" fill="#5d4037"/>
+  <!-- Garden flowers -->
+  <circle cx="15" cy="79" r="6" fill="#81c784" stroke="#558b2f" stroke-width="2"/>
+  <circle cx="13" cy="75" r="2.6" fill="#ff80ab"/>
+  <circle cx="101" cy="79" r="6" fill="#81c784" stroke="#558b2f" stroke-width="2"/>
+  <circle cx="103" cy="75" r="2.6" fill="#ffd54f"/>
 </svg>`;
 
 export const STEP_ILLUSTRATIONS = {
