@@ -652,6 +652,31 @@ svg {
   border-radius: 18px;
 }
 
+@media (min-width: 961px) and (min-height: 540px) {
+  .step-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding-block-end: calc(clamp(10px, 1.3dvh, 16px) + clamp(14px, 3dvh, 24px));
+  }
+
+  .step-art-wrap {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .step-art {
+    inline-size: min(100%, 252px);
+    block-size: min(100%, 252px);
+    max-block-size: none;
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 961px) and (540px <= height <= 680px) {
+  .step-card {
+    padding-block-end: calc(clamp(10px, 1.3dvh, 16px) + 8px);
+    gap: 4px;
+  }
+}
+
 .step-card.is-done .step-art {
   opacity: 0.72;
 }
