@@ -239,7 +239,7 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
             with page.expect_response(
                 lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
             ):
-                page.locator("#custom-image-grid input[type='file']").first.set_input_files(
+                page.locator('input[data-custom-slot="mascot"]').set_input_files(
                     {
                         "name": "direct_slot.gif",
                         "mimeType": "",
@@ -365,3 +365,124 @@ def test_browser_broken_image_falls_back_to_svg(tmp_path: Path) -> None:
         srv.shutdown()
         srv.server_close()
         th.join(timeout=3)
+
+
+def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    srv = start_server(
+        root / "web",
+        store={"items": []},
+        state_file=tmp_path / "dashboard_state.json",
+        port=0,
+    )
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+
+    console_errors: list[str] = []
+    page_errors: list[str] = []
+
+    try:
+        base_url = f"http://127.0.0.1:{srv.server_port}/"
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                has_touch=True,
+                service_workers="block",
+            )
+            page = context.new_page()
+            page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+            page.on("pageerror", lambda err: page_errors.append(str(err)))
+            page.route(
+                "**/*open-meteo.com/**",
+                lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(MOCK_FORECAST_JSON)),
+            )
+
+            page.goto(base_url, wait_until="domcontentloaded")
+            _open_parent_dialog_by_touch(page)
+
+            # 1. Register common mascot first + babyshark-specific mascot
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('input[data-custom-slot="mascot"]').set_input_files(
+                    {"name": "common.png", "mimeType": "image/png", "buffer": TINY_PNG_BYTES}
+                )
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('input[data-custom-slot="mascot_babyshark"]').set_input_files(
+                    {"name": "shark.gif", "mimeType": "image/gif", "buffer": TINY_GIF_BYTES}
+                )
+
+            # Verify all 3 mascot slots reflect babyshark-specific GIF
+            expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/gif;"))
+            expect(page.locator("#track-mascot img")).to_have_attribute("src", re.compile(r"^data:image/gif;"))
+            expect(page.locator(".step-card.is-active .mini-mascot img")).to_have_attribute(
+                "src", re.compile(r"^data:image/gif;")
+            )
+
+            # 2. Switch to pororo -> falls back to common mascot (PNG) since pororo-specific is empty
+            dialog = page.locator("#parent-dialog")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                dialog.locator('[data-theme-choice="pororo"]').click()
+            expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+
+            # Register pororo-specific mascot -> replaces all 3 mascot slots for pororo
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('input[data-custom-slot="mascot_pororo"]').set_input_files(
+                    {"name": "pororo.png", "mimeType": "image/png", "buffer": TINY_PNG_BYTES}
+                )
+            expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator("#track-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator(".step-card.is-active .mini-mascot img")).to_have_attribute(
+                "src", re.compile(r"^data:image/png;")
+            )
+
+            # Reset babyshark-specific slot -> pororo-specific & common mascot stay preserved
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('button[data-reset-custom-slot="mascot_babyshark"]').click()
+
+            stored_imgs = page.evaluate(
+                "() => JSON.parse(localStorage.getItem('family_dashboard_state_v1')).customImages"
+            )
+            assert stored_imgs["mascot_babyshark"] is None
+            assert stored_imgs["mascot_pororo"].startswith("data:image/png;")
+            assert stored_imgs["mascot"].startswith("data:image/png;")
+
+            page.locator("#btn-save-close").click()
+            expect(dialog).not_to_have_attribute("open", "")
+
+            # 3. Stamp card 1 -> generated stamp badge frames the theme mascot PNG
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator(".step-card").nth(0).locator(".stamp-cta-btn").click()
+
+            stamp_img = page.locator(".step-card").nth(0).locator(".stamp-generated img")
+            expect(stamp_img).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator(".step-card").nth(0).locator(".stamp-generated-banner")).to_have_text("대장 도장 쾅!")
+
+            # 4. Reload persists pororo mascot & generated stamp
+            page.reload(wait_until="domcontentloaded")
+            expect(page.locator("html")).to_have_attribute("data-theme", "pororo")
+            expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator(".step-card").nth(0).locator(".stamp-generated img")).to_have_attribute(
+                "src", re.compile(r"^data:image/png;")
+            )
+
+            context.close()
+            browser.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        th.join(timeout=3)
+
+    assert console_errors == [], f"Unexpected browser console errors: {console_errors}"
+    assert page_errors == [], f"Unexpected browser page errors: {page_errors}"

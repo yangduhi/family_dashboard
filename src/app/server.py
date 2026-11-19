@@ -15,7 +15,18 @@ from urllib.parse import unquote, urlparse
 SUPPORTED_THEMES = ("babyshark", "pororo")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-CUSTOM_IMAGE_KEYS = ("mascot", "stamp", "step1", "step2", "step3", "step4")
+CUSTOM_IMAGE_KEYS = (
+    "mascot",
+    "mascot_babyshark",
+    "mascot_pororo",
+    "stamp",
+    "stamp_babyshark",
+    "stamp_pororo",
+    "step1",
+    "step2",
+    "step3",
+    "step4",
+)
 FIXED_LOCATION: dict[str, Any] = {
     "id": "gangdong-sangil",
     "name": "서울 강동구 상일동",
@@ -227,7 +238,7 @@ def make_handler(web_dir: Path, store: dict[str, Any], state_file: Path | None =
                 self._send_json(400, {"ok": False, "error": "Invalid Content-Length header"})
                 return
 
-            if content_len <= 0 or content_len > 2_500_000:
+            if content_len <= 0 or content_len > 5_000_000:
                 self._send_json(400, {"ok": False, "error": "Request body empty or too large"})
                 return
 

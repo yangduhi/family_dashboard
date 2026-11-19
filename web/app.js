@@ -22,13 +22,27 @@ const STORAGE_KEY = "family_dashboard_state_v1";
 const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v1";
 const MAX_INLINE_ANIMATED_BYTES = 900_000;
 const CUSTOM_SLOTS = [
-  { key: "mascot", label: "캐릭터 마스코트" },
-  { key: "stamp", label: "참잘함 도장" },
+  { key: "mascot_babyshark", label: "🦈 아기상어 마스코트 (전용)" },
+  { key: "mascot_pororo", label: "🐧 뽀로로 마스코트 (전용)" },
+  { key: "mascot", label: "⭐ 공통 마스코트 (미설정 시 기본)" },
+  { key: "stamp_babyshark", label: "🦈 아기상어 도장 (전용)" },
+  { key: "stamp_pororo", label: "🐧 뽀로로 도장 (전용)" },
+  { key: "stamp", label: "⭐ 공통 도장 (미설정 시 기본)" },
   { key: "step1", label: "① 아침 먹기" },
   { key: "step2", label: "② 세수·양치" },
   { key: "step3", label: "③ 옷 입기" },
   { key: "step4", label: "④ 가방 챙기기" },
 ];
+
+export function resolveThemeMascotUrl(state, themeId = state?.theme) {
+  const custom = state?.customImages || {};
+  return custom[`mascot_${themeId}`] || custom.mascot || null;
+}
+
+export function resolveThemeStampUrl(state, themeId = state?.theme) {
+  const custom = state?.customImages || {};
+  return custom[`stamp_${themeId}`] || custom.stamp || null;
+}
 
 export function formatDateISO(date = new Date()) {
   const y = date.getFullYear();
@@ -51,7 +65,11 @@ export function createDefaultState(todayStr = formatDateISO()) {
     ttsEnabled: true,
     customImages: {
       mascot: null,
+      mascot_babyshark: null,
+      mascot_pororo: null,
       stamp: null,
+      stamp_babyshark: null,
+      stamp_pororo: null,
       step1: null,
       step2: null,
       step3: null,
@@ -318,6 +336,37 @@ function setMediaSlot(container, customUrl, fallbackSvg, altText) {
   container.appendChild(tpl.content);
 }
 
+function setStampSlot(container, customStampUrl, themeMascotUrl, theme) {
+  if (customStampUrl) {
+    setMediaSlot(container, customStampUrl, theme.stampSvg, theme.stampTitle);
+    return;
+  }
+  if (themeMascotUrl) {
+    container.replaceChildren();
+    const seal = document.createElement("div");
+    seal.className = "stamp-generated";
+    const img = document.createElement("img");
+    img.src = themeMascotUrl;
+    img.alt = theme.stampTitle;
+    img.addEventListener(
+      "error",
+      () => {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = theme.stampSvg.trim();
+        container.replaceChildren(tpl.content);
+      },
+      { once: true }
+    );
+    const banner = document.createElement("span");
+    banner.className = "stamp-generated-banner";
+    banner.textContent = theme.stampTitle;
+    seal.append(img, banner);
+    container.appendChild(seal);
+    return;
+  }
+  setMediaSlot(container, null, theme.stampSvg, theme.stampTitle);
+}
+
 function readFileAsDataUrl(file, errorMessage) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -354,6 +403,9 @@ async function resizeUploadedImage(file) {
   });
 
   const maxDim = 512;
+  if (mime === "image/png" && Math.max(img.width, img.height) <= maxDim && file.size <= MAX_INLINE_ANIMATED_BYTES) {
+    return dataUrl;
+  }
   const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
   const h = Math.max(1, Math.round(img.height * scale));
@@ -767,8 +819,9 @@ function initDashboardApp() {
       els.cheerBubble.textContent = `${state.childName}, 같이 '${step.title}' 해볼까?`;
     }
 
-    setMediaSlot(els.headerMascot, state.customImages.mascot, theme.mascotSvg, theme.name);
-    setMediaSlot(els.trackMascot, state.customImages.mascot, theme.mascotSvg, theme.name);
+    const mascotUrl = resolveThemeMascotUrl(state);
+    setMediaSlot(els.headerMascot, mascotUrl, theme.mascotSvg, theme.name);
+    setMediaSlot(els.trackMascot, mascotUrl, theme.mascotSvg, theme.name);
     setMediaSlot(els.daycareIcon, null, DAYCARE_SVG, state.schoolLabel);
   }
 
@@ -803,7 +856,8 @@ function initDashboardApp() {
       speech.textContent = "같이 하자!";
       const miniMascot = document.createElement("div");
       miniMascot.className = "mini-mascot";
-      setMediaSlot(miniMascot, state.customImages.mascot, theme.mascotSvg, theme.name);
+      const mascotUrl = resolveThemeMascotUrl(state);
+      setMediaSlot(miniMascot, mascotUrl, theme.mascotSvg, theme.name);
       helper.append(speech, miniMascot);
       head.append(badge, helper);
 
@@ -818,7 +872,7 @@ function initDashboardApp() {
       stampOverlay.className = "stamp-overlay";
       const stampInner = document.createElement("div");
       stampInner.className = "stamp-badge-inner";
-      setMediaSlot(stampInner, state.customImages.stamp, theme.stampSvg, theme.stampTitle);
+      setStampSlot(stampInner, resolveThemeStampUrl(state), mascotUrl, theme);
       stampOverlay.appendChild(stampInner);
       artWrap.append(art, stampOverlay);
 
@@ -984,10 +1038,11 @@ function initDashboardApp() {
     CUSTOM_SLOTS.forEach((slot) => {
       const box = document.createElement("div");
       box.className = "image-slot-card";
+      box.dataset.customCard = slot.key;
       const title = document.createElement("div");
       title.className = "image-slot-title";
       const hasCustom = Boolean(state.customImages[slot.key]);
-      title.textContent = hasCustom ? `${slot.label} (사용자 사진)` : `${slot.label} (기본 그림)`;
+      title.textContent = hasCustom ? `${slot.label} (등록됨)` : `${slot.label} (기본 그림)`;
 
       const actions = document.createElement("div");
       actions.className = "image-slot-actions";
@@ -998,8 +1053,10 @@ function initDashboardApp() {
       const fileInput = document.createElement("input");
       fileInput.type = "file";
       fileInput.accept = "image/*";
+      fileInput.dataset.customSlot = slot.key;
       fileInput.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
+        e.target.value = "";
         if (!file) return;
         try {
           const resized = await resizeUploadedImage(file);
@@ -1021,6 +1078,7 @@ function initDashboardApp() {
       resetBtn.className = "clear-img-btn";
       resetBtn.textContent = "기본";
       resetBtn.disabled = !hasCustom;
+      resetBtn.dataset.resetCustomSlot = slot.key;
       resetBtn.addEventListener("click", () => {
         persistState({
           ...state,

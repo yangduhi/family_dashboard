@@ -82,7 +82,11 @@
       "type": "object",
       "properties": {
         "mascot": { "type": ["string", "null"], "maxLength": 2000000 },
+        "mascot_babyshark": { "type": ["string", "null"], "maxLength": 2000000 },
+        "mascot_pororo": { "type": ["string", "null"], "maxLength": 2000000 },
         "stamp": { "type": ["string", "null"], "maxLength": 2000000 },
+        "stamp_babyshark": { "type": ["string", "null"], "maxLength": 2000000 },
+        "stamp_pororo": { "type": ["string", "null"], "maxLength": 2000000 },
         "step1": { "type": ["string", "null"], "maxLength": 2000000 },
         "step2": { "type": ["string", "null"], "maxLength": 2000000 },
         "step3": { "type": ["string", "null"], "maxLength": 2000000 },

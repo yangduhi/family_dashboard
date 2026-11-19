@@ -81,11 +81,28 @@ def test_schema_contract_alignment() -> None:
         assert validator.is_valid(payload), list(validator.iter_errors(payload))
         assert validate_dashboard_state(payload) == payload
 
-    # Legacy location payloads are schema-valid inputs normalized to FIXED_LOCATION
+    # Legacy location & legacy 6-key customImages payloads normalize cleanly to 10 keys + FIXED_LOCATION
     busan_migrated = validate_dashboard_state(
-        {**base, "location": {"id": "busan", "name": "부산 해운대구", "lat": 35.1631, "lon": 129.1636}}
+        {
+            **base,
+            "location": {"id": "busan", "name": "부산 해운대구", "lat": 35.1631, "lon": 129.1636},
+            "customImages": {
+                "mascot": "data:image/png;base64,BBBB",
+                "stamp": None,
+                "step1": None,
+                "step2": None,
+                "step3": None,
+                "step4": None,
+            },
+        }
     )
     assert busan_migrated["location"] == FIXED_LOCATION
+    assert busan_migrated["customImages"]["mascot"] == "data:image/png;base64,BBBB"
+    assert busan_migrated["customImages"]["mascot_babyshark"] is None
+    assert busan_migrated["customImages"]["mascot_pororo"] is None
+    assert busan_migrated["customImages"]["stamp_babyshark"] is None
+    assert busan_migrated["customImages"]["stamp_pororo"] is None
+    assert validator.is_valid(busan_migrated)
 
     invalid_full_payloads = [
         {**base, "theme": "pikachu"},
@@ -213,6 +230,8 @@ import {{
   computeCountdown,
   buildWeatherTip,
   resolveUploadedImageMime,
+  resolveThemeMascotUrl,
+  resolveThemeStampUrl,
 }} from {json.dumps(app_url)};
 import {{
   buildMediaRecordId,
@@ -335,6 +354,24 @@ assert.equal(resolveUploadedImageMime({{ name: 'dance.GIF', type: '' }}), 'image
 assert.equal(resolveUploadedImageMime({{ name: 'clip.webp', type: '' }}), 'image/webp');
 assert.equal(resolveUploadedImageMime({{ name: 'icon.svg', type: '' }}), 'image/svg+xml');
 assert.equal(resolveUploadedImageMime({{ name: 'photo.jpg', type: 'image/jpeg' }}), 'image/jpeg');
+
+// 9. Theme-scoped mascot & stamp precedence with common fallback
+const themedState = {{
+  theme: 'babyshark',
+  customImages: {{
+    mascot: 'data:image/png;base64,COMMON_M',
+    mascot_babyshark: 'data:image/png;base64,SHARK_M',
+    mascot_pororo: null,
+    stamp: 'data:image/png;base64,COMMON_S',
+    stamp_babyshark: null,
+    stamp_pororo: 'data:image/png;base64,PORORO_S',
+  }},
+}};
+assert.equal(resolveThemeMascotUrl(themedState, 'babyshark'), 'data:image/png;base64,SHARK_M');
+assert.equal(resolveThemeMascotUrl(themedState, 'pororo'), 'data:image/png;base64,COMMON_M');
+assert.equal(resolveThemeStampUrl(themedState, 'babyshark'), 'data:image/png;base64,COMMON_S');
+assert.equal(resolveThemeStampUrl(themedState, 'pororo'), 'data:image/png;base64,PORORO_S');
+assert.equal(resolveThemeMascotUrl({{ theme: 'pororo', customImages: {{}} }}), null);
 """
     proc = subprocess.run(
         [node_bin, "--input-type=module", "-e", js_test],
