@@ -5,19 +5,14 @@ export const STEP_META = [
   { id: "step4", number: 4, title: "가방 챙기기", cheer: "가방까지 척! 이제 신나게 출발하자!" },
 ];
 
-export const LOCATIONS = [
-  { id: "seoul", name: "서울 중구", lat: 37.5665, lon: 126.978 },
-  { id: "gangnam", name: "서울 강남구", lat: 37.5172, lon: 127.0473 },
-  { id: "mapo", name: "서울 마포구", lat: 37.5663, lon: 126.9019 },
-  { id: "bundang", name: "성남 분당구", lat: 37.3827, lon: 127.1189 },
-  { id: "suwon", name: "수원 영통구", lat: 37.2596, lon: 127.0465 },
-  { id: "incheon", name: "인천 연수구", lat: 37.4102, lon: 126.6783 },
-  { id: "busan", name: "부산 해운대구", lat: 35.1631, lon: 129.1636 },
-  { id: "daegu", name: "대구 수성구", lat: 35.8581, lon: 128.6306 },
-  { id: "daejeon", name: "대전 유성구", lat: 36.3622, lon: 127.3561 },
-  { id: "gwangju", name: "광주 서구", lat: 35.152, lon: 126.8895 },
-  { id: "jeju", name: "제주 제주시", lat: 33.4996, lon: 126.5312 },
-];
+export const FIXED_LOCATION = Object.freeze({
+  id: "gangdong-sangil",
+  name: "서울 강동구 상일동",
+  lat: 37.5566,
+  lon: 127.1654,
+});
+
+export const LOCATIONS = [FIXED_LOCATION];
 
 export const DAYCARE_SVG = `
 <svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

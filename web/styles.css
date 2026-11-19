@@ -1061,6 +1061,79 @@ dialog.parent-dialog::backdrop {
   cursor: pointer;
 }
 
+.fixed-location-pill {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 2px solid #cbd5e1;
+  background: #f1f5f9;
+  font-size: 15px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.media-pool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.media-pool-theme-label {
+  font-size: 13px;
+  font-weight: 900;
+  color: #0f766e;
+  background: #ccfbf1;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.upload-btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.media-pool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.media-pool-card {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.media-pool-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.media-pool-count {
+  font-size: 12px;
+  font-weight: 900;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.media-pool-sample {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dialog-foot {
   padding: 12px 22px;
   border-top: 2px solid #eef2f6;

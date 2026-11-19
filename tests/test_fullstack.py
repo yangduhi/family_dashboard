@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
 import threading
+import zipfile
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
@@ -14,6 +17,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from app.server import (
+    FIXED_LOCATION,
     build_parser,
     default_dashboard_state,
     default_state_file,
@@ -28,10 +32,17 @@ def test_default_and_validate_dashboard_state() -> None:
     assert state["stepsCompleted"] == [False, False, False, False]
     assert state["lastStampedDate"] == "2026-11-18"
     assert state["departureTime"] == "08:50"
+    assert state["location"] == FIXED_LOCATION
 
     updated = validate_dashboard_state({**state, "theme": "pororo", "stepsCompleted": [True, False, False, False]})
     assert updated["theme"] == "pororo"
     assert updated["stepsCompleted"] == [True, False, False, False]
+    assert updated["location"] == FIXED_LOCATION
+
+    migrated = validate_dashboard_state(
+        {**state, "location": {"id": "seoul", "name": "서울 중구", "lat": 37.5665, "lon": 126.9780}}
+    )
+    assert migrated["location"] == FIXED_LOCATION
 
     with pytest.raises(ValueError):
         validate_dashboard_state({**state, "theme": "pikachu"})
@@ -61,7 +72,7 @@ def test_schema_contract_alignment() -> None:
                 "stepsCompleted": [True, True, False, False],
                 "soundEnabled": False,
                 "ttsEnabled": False,
-                "location": {"id": "busan", "name": "부산 해운대구", "lat": 35.1631, "lon": 129.1636},
+                "location": dict(FIXED_LOCATION),
                 "customImages": {**base["customImages"], "mascot": "data:image/png;base64,AAAA"},
             }
         ),
@@ -69,6 +80,12 @@ def test_schema_contract_alignment() -> None:
     for payload in valid_variants:
         assert validator.is_valid(payload), list(validator.iter_errors(payload))
         assert validate_dashboard_state(payload) == payload
+
+    # Legacy location payloads are schema-valid inputs normalized to FIXED_LOCATION
+    busan_migrated = validate_dashboard_state(
+        {**base, "location": {"id": "busan", "name": "부산 해운대구", "lat": 35.1631, "lon": 129.1636}}
+    )
+    assert busan_migrated["location"] == FIXED_LOCATION
 
     invalid_full_payloads = [
         {**base, "theme": "pikachu"},
@@ -146,6 +163,9 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert "테마 배지" not in html
     assert "top-theme-bar" not in html
     assert "parent-dialog" in html
+    assert "select-location" not in html and "selectLocation" not in app_js
+    assert "fixed-location-badge" in html and "서울 강동구 상일동" in html
+    assert "media-pool-grid" in html and "서울 강동구 상일동" in assets_js
     assert "아기상어" in html and "뽀로로" in html
     assert "아침 먹기" in assets_js and "세수·양치" in assets_js and "옷 입기" in assets_js and "가방 챙기기" in assets_js
     assert "1500" in app_js and "3000" in app_js
@@ -157,7 +177,7 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert 'src="./app.js"' in html
     assert manifest["start_url"] == "./"
     assert manifest["scope"] == "./"
-    assert '"./sw.js"' in app_js and '"./index.html"' in sw_js
+    assert '"./sw.js"' in app_js and '"./index.html"' in sw_js and '"./media_store.js"' in sw_js
     assert {icon["sizes"] for icon in manifest["icons"]} >= {"192x192", "512x512"}
     for icon in manifest["icons"]:
         assert icon["src"].startswith("./") and icon["type"] == "image/png"
@@ -171,7 +191,15 @@ def test_web_ui_contracts_and_js_logic() -> None:
     node_bin = shutil.which("node")
     assert node_bin is not None, "Node.js is required to test web/app.js ES module logic"
 
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("아기상어/등원준비/01_breakfast.gif", b"GIF89a-shark-1", compress_type=zipfile.ZIP_STORED)
+        zf.writestr("pororo_morning_60/webp/crong/dress_01.webp", b"RIFF0000WEBP-crong", compress_type=zipfile.ZIP_DEFLATED)
+        zf.writestr("pororo_morning_60/poster/crong/dress_01.png", b"PNG-POSTER", compress_type=zipfile.ZIP_DEFLATED)
+    zip_b64 = base64.b64encode(zip_buf.getvalue()).decode("ascii")
+
     app_url = (root / "web" / "app.js").resolve().as_uri()
+    media_url = (root / "web" / "media_store.js").resolve().as_uri()
     js_test = f"""
 import assert from 'node:assert/strict';
 import {{
@@ -184,21 +212,36 @@ import {{
   undoLastStamp,
   computeCountdown,
   buildWeatherTip,
+  resolveUploadedImageMime,
 }} from {json.dumps(app_url)};
+import {{
+  buildMediaRecordId,
+  classifyMediaPath,
+  parseZipEntries,
+  pickRandomFromPool,
+  buildStepMediaSelection,
+}} from {json.dumps(media_url)};
 
 assert.equal(UNDO_HOLD_MS, 1500);
 assert.equal(PARENT_HOLD_MS, 3000);
 
-// 1. Daily reset on date change
+// 1. Daily reset on date change & fixed location migration
 const yesterday = {{
   theme: 'pororo',
   stepsCompleted: [true, true, false, false],
   lastStampedDate: '2026-11-17',
+  location: {{ id: 'seoul', name: '서울 중구', lat: 37.5665, lon: 126.978 }},
 }};
 const todayReset = normalizeDailyState(yesterday, '2026-11-18');
 assert.deepEqual(todayReset.stepsCompleted, [false, false, false, false]);
 assert.equal(todayReset.lastStampedDate, '2026-11-18');
 assert.equal(todayReset.theme, 'pororo');
+assert.deepEqual(todayReset.location, {{
+  id: 'gangdong-sangil',
+  name: '서울 강동구 상일동',
+  lat: 37.5566,
+  lon: 127.1654,
+}});
 
 // 2. Strict single-active-step stamp & undo guard
 let st = normalizeDailyState({{ stepsCompleted: [false, false, false, false], lastStampedDate: '2026-11-18' }}, '2026-11-18');
@@ -235,6 +278,63 @@ assert.equal(c2.isPastDeparture, true);
 const tipColdRain = buildWeatherTip(7, 5, 11, 70, 20);
 assert.ok(tipColdRain.includes('겉옷'));
 assert.ok(tipColdRain.includes('우산'));
+
+// 5. Media path classification & collision-free IDs
+const cPororo = classifyMediaPath('pororo_morning_60/webp/pororo/breakfast_01.webp');
+const cCrong = classifyMediaPath('pororo_morning_60/webp/crong/breakfast_01.webp');
+assert.equal(cPororo.theme, 'pororo');
+assert.equal(cPororo.step, 'step1');
+assert.equal(cPororo.mimeType, 'image/webp');
+assert.notEqual(
+  buildMediaRecordId(cPororo.theme, cPororo.step, cPororo.relPath),
+  buildMediaRecordId(cCrong.theme, cCrong.step, cCrong.relPath)
+);
+
+const cShark = classifyMediaPath('아기상어/등원준비/02_wash_brush.gif');
+assert.equal(cShark.theme, 'babyshark');
+assert.equal(cShark.step, 'step2');
+assert.equal(cShark.mimeType, 'image/gif');
+
+assert.equal(classifyMediaPath('pororo_morning_60/poster/pororo/bag_01.png'), null);
+assert.equal(classifyMediaPath('.DS_Store'), null);
+assert.equal(classifyMediaPath('__MACOSX/pororo/._bag_01.gif'), null);
+
+// 6. Random pool selection
+assert.equal(pickRandomFromPool([]), null);
+assert.deepEqual(pickRandomFromPool([{{ id: 'a' }}]), {{ id: 'a' }});
+const picked = pickRandomFromPool([{{ id: 'a' }}, {{ id: 'b' }}], () => 0.0, 'a');
+assert.equal(picked.id, 'b');
+
+const sel = buildStepMediaSelection(
+  {{ step1: [{{ id: 's1' }}], step2: [], step3: [{{ id: 's3a' }}, {{ id: 's3b' }}], step4: [] }},
+  () => 0.0,
+  {{ step3: {{ id: 's3a' }} }}
+);
+assert.equal(sel.step1.id, 's1');
+assert.equal(sel.step2, null);
+assert.equal(sel.step3.id, 's3b');
+assert.equal(sel.step4, null);
+
+// 7. Zero-dep ZIP parser (Stored + Deflate + UTF-8 Korean + pre-filter)
+const zipBytes = Uint8Array.from(Buffer.from({json.dumps(zip_b64)}, 'base64'));
+const parsedEntries = [];
+for await (const entry of parseZipEntries(zipBytes, {{ shouldReadEntry: (p) => classifyMediaPath(p) !== null }})) {{
+  parsedEntries.push({{
+    path: entry.path,
+    text: Buffer.from(entry.bytes).toString('utf8'),
+  }});
+}}
+assert.equal(parsedEntries.length, 2);
+assert.equal(parsedEntries[0].path, '아기상어/등원준비/01_breakfast.gif');
+assert.equal(parsedEntries[0].text, 'GIF89a-shark-1');
+assert.equal(parsedEntries[1].path, 'pororo_morning_60/webp/crong/dress_01.webp');
+assert.equal(parsedEntries[1].text, 'RIFF0000WEBP-crong');
+
+// 8. Empty MIME type extension fallback for direct slot uploads
+assert.equal(resolveUploadedImageMime({{ name: 'dance.GIF', type: '' }}), 'image/gif');
+assert.equal(resolveUploadedImageMime({{ name: 'clip.webp', type: '' }}), 'image/webp');
+assert.equal(resolveUploadedImageMime({{ name: 'icon.svg', type: '' }}), 'image/svg+xml');
+assert.equal(resolveUploadedImageMime({{ name: 'photo.jpg', type: 'image/jpeg' }}), 'image/jpeg');
 """
     proc = subprocess.run(
         [node_bin, "--input-type=module", "-e", js_test],
@@ -257,7 +357,7 @@ def test_fullstack_loopback_http_and_ui() -> None:
         html = opener.open(base + "/", timeout=5).read().decode("utf-8")
         assert "어린이집" in html or "등원" in html
 
-        for asset in ("/styles.css", "/assets.js", "/app.js", "/manifest.json", "/sw.js"):
+        for asset in ("/styles.css", "/assets.js", "/media_store.js", "/app.js", "/manifest.json", "/sw.js"):
             resp = opener.open(base + asset, timeout=5)
             assert resp.status == 200
         for size in (192, 512):

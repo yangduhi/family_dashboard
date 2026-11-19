@@ -16,6 +16,12 @@ SUPPORTED_THEMES = ("babyshark", "pororo")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CUSTOM_IMAGE_KEYS = ("mascot", "stamp", "step1", "step2", "step3", "step4")
+FIXED_LOCATION: dict[str, Any] = {
+    "id": "gangdong-sangil",
+    "name": "서울 강동구 상일동",
+    "lat": 37.5566,
+    "lon": 127.1654,
+}
 
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -44,12 +50,7 @@ def default_dashboard_state(today_str: str | None = None) -> dict[str, Any]:
         "prepStartTime": "07:50",
         "stepsCompleted": [False, False, False, False],
         "lastStampedDate": day,
-        "location": {
-            "id": "seoul",
-            "name": "서울 중구",
-            "lat": 37.5665,
-            "lon": 126.9780,
-        },
+        "location": dict(FIXED_LOCATION),
         "soundEnabled": True,
         "ttsEnabled": True,
         "customImages": {key: None for key in CUSTOM_IMAGE_KEYS},
@@ -107,8 +108,8 @@ def validate_dashboard_state(payload: dict[str, Any]) -> dict[str, Any]:
     extra_loc_keys = set(loc.keys()) - {"id", "name", "lat", "lon"}
     if extra_loc_keys:
         raise ValueError(f"Unsupported location fields: {sorted(extra_loc_keys)}")
-    loc_id = _require_str(loc.get("id"), "location.id", min_len=1, max_len=32)
-    loc_name = _require_str(loc.get("name"), "location.name", min_len=1, max_len=40)
+    _require_str(loc.get("id"), "location.id", min_len=1, max_len=32)
+    _require_str(loc.get("name"), "location.name", min_len=1, max_len=40)
     lat = loc.get("lat")
     lon = loc.get("lon")
     if isinstance(lat, bool) or not isinstance(lat, (int, float)) or not (-90.0 <= float(lat) <= 90.0):
@@ -142,12 +143,7 @@ def validate_dashboard_state(payload: dict[str, Any]) -> dict[str, Any]:
         "prepStartTime": prep_start_time,
         "stepsCompleted": list(steps),
         "lastStampedDate": last_date,
-        "location": {
-            "id": loc_id,
-            "name": loc_name,
-            "lat": float(lat),
-            "lon": float(lon),
-        },
+        "location": dict(FIXED_LOCATION),
         "soundEnabled": sound_enabled,
         "ttsEnabled": tts_enabled,
         "customImages": clean_images,

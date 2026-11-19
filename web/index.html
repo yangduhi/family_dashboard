@@ -58,7 +58,7 @@
             <span class="weather-emoji" id="weather-emoji">☀️</span>
             <span class="weather-temp" id="weather-temp">8°</span>
             <div class="weather-meta">
-              <span class="weather-cond" id="weather-cond">맑음 · 서울 중구</span>
+              <span class="weather-cond" id="weather-cond">맑음 · 서울 강동구 상일동</span>
               <span id="weather-range">최고 13° · 최저 6° · 초미세 12</span>
             </div>
           </div>
@@ -158,10 +158,10 @@
             목표 출발 시각
             <input type="time" id="input-departure-time">
           </label>
-          <label class="field-label" style="grid-column: 1 / -1">
+          <div class="field-label" style="grid-column: 1 / -1">
             우리 동네 (실시간 날씨·미세먼지)
-            <select id="select-location"></select>
-          </label>
+            <div class="fixed-location-pill" id="fixed-location-badge">📍 서울 강동구 상일동 (고정)</div>
+          </div>
         </div>
       </section>
 
@@ -188,7 +188,36 @@
       </section>
 
       <section class="setting-section">
-        <h3>5. 그림 / 사진 직접 바꾸기 (일반 PNG · JPG · WEBP · SVG 지원)</h3>
+        <div class="media-pool-head">
+          <h3>5. 테마별 행동 GIF·WebP 랜덤 풀 (태블릿 브라우저 전용 저장)</h3>
+          <span class="media-pool-theme-label" id="media-pool-theme-label">현재 테마: 🦈 아기상어</span>
+        </div>
+        <div class="btn-row media-pool-actions">
+          <label class="parent-action-btn primary upload-btn-label">
+            📦 ZIP / 여러 파일 일괄 추가
+            <input
+              type="file"
+              id="input-batch-media"
+              multiple
+              accept="image/*,.zip,application/zip,application/x-zip-compressed"
+              style="display: none"
+            >
+          </label>
+          <button type="button" class="parent-action-btn" id="btn-reroll-media">
+            🎲 오늘 그림 다시 뽑기
+          </button>
+          <button type="button" class="parent-action-btn warn" id="btn-clear-theme-media">
+            🗑️ 현재 테마 풀 비우기
+          </button>
+        </div>
+        <div class="status-note" id="media-pool-status">
+          앱을 열거나 테마·날짜가 바뀔 때 등록된 GIF·WebP 중 1종을 랜덤 고정합니다.
+        </div>
+        <div class="media-pool-grid" id="media-pool-grid"></div>
+      </section>
+
+      <section class="setting-section">
+        <h3>6. 개별 고정 그림 / 사진 직접 바꾸기 (PNG · JPG · WEBP · GIF · SVG)</h3>
         <div class="custom-image-grid" id="custom-image-grid"></div>
       </section>
     </div>

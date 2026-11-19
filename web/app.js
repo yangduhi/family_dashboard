@@ -1,10 +1,26 @@
-import { DAYCARE_SVG, LOCATIONS, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js";
+import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js";
+import {
+  buildMediaRecordId,
+  buildStepMediaSelection,
+  classifyMediaPath,
+  clearMediaBySlot,
+  clearMediaByTheme,
+  createEmptyMediaBuckets,
+  extractDisplayName,
+  getImageMimeType,
+  loadMediaPoolByTheme,
+  normalizeRelPath,
+  parseZipEntries,
+  putMediaItems,
+  STEP_IDS,
+} from "./media_store.js";
 
 export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;
 
 const STORAGE_KEY = "family_dashboard_state_v1";
 const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v1";
+const MAX_INLINE_ANIMATED_BYTES = 900_000;
 const CUSTOM_SLOTS = [
   { key: "mascot", label: "캐릭터 마스코트" },
   { key: "stamp", label: "참잘함 도장" },
@@ -30,7 +46,7 @@ export function createDefaultState(todayStr = formatDateISO()) {
     prepStartTime: "07:50",
     stepsCompleted: [false, false, false, false],
     lastStampedDate: todayStr,
-    location: { ...LOCATIONS[0] },
+    location: { ...FIXED_LOCATION },
     soundEnabled: true,
     ttsEnabled: true,
     customImages: {
@@ -49,7 +65,7 @@ export function normalizeDailyState(rawState, todayStr = formatDateISO()) {
   const state = {
     ...base,
     ...(rawState || {}),
-    location: { ...base.location, ...(rawState?.location || {}) },
+    location: { ...FIXED_LOCATION },
     customImages: { ...base.customImages, ...(rawState?.customImages || {}) },
   };
   if (state.theme !== "babyshark" && state.theme !== "pororo") {
@@ -285,6 +301,15 @@ function setMediaSlot(container, customUrl, fallbackSvg, altText) {
     const img = document.createElement("img");
     img.src = customUrl;
     img.alt = altText;
+    img.addEventListener(
+      "error",
+      () => {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = fallbackSvg.trim();
+        container.replaceChildren(tpl.content);
+      },
+      { once: true }
+    );
     container.appendChild(img);
     return;
   }
@@ -293,21 +318,33 @@ function setMediaSlot(container, customUrl, fallbackSvg, altText) {
   container.appendChild(tpl.content);
 }
 
-async function resizeUploadedImage(file) {
-  if (file.type === "image/svg+xml") {
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("SVG 파일을 읽을 수 없습니다."));
-      reader.readAsDataURL(file);
-    });
-  }
-  const dataUrl = await new Promise((resolve, reject) => {
+function readFileAsDataUrl(file, errorMessage) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("이미지 파일을 읽을 수 없습니다."));
+    reader.onerror = () => reject(new Error(errorMessage));
     reader.readAsDataURL(file);
   });
+}
+
+export function resolveUploadedImageMime(file) {
+  return String(file?.type || getImageMimeType(file?.name) || "").toLowerCase();
+}
+
+async function resizeUploadedImage(file) {
+  const mime = resolveUploadedImageMime(file);
+  if (mime === "image/svg+xml") {
+    return await readFileAsDataUrl(file, "SVG 파일을 읽을 수 없습니다.");
+  }
+  if (mime === "image/gif" || mime === "image/webp") {
+    if (file.size > MAX_INLINE_ANIMATED_BYTES) {
+      throw new Error(
+        "900KB 초과 GIF·WebP 파일은 위 '5. 테마별 행동 랜덤 풀'에 추가해 주세요."
+      );
+    }
+    return await readFileAsDataUrl(file, "애니메이션 이미지 파일을 읽을 수 없습니다.");
+  }
+  const dataUrl = await readFileAsDataUrl(file, "이미지 파일을 읽을 수 없습니다.");
 
   const img = await new Promise((resolve, reject) => {
     const el = new Image();
@@ -325,7 +362,7 @@ async function resizeUploadedImage(file) {
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
-  const outType = file.type === "image/png" || file.type === "image/webp" ? "image/png" : "image/jpeg";
+  const outType = mime === "image/png" || mime === "image/webp" ? "image/png" : "image/jpeg";
   return canvas.toDataURL(outType, 0.86);
 }
 
@@ -335,6 +372,16 @@ function initDashboardApp() {
   let justStampedIndex = -1;
   let wakeLockSentinel = null;
   let serverSyncAvailable = false;
+  let mediaPoolCache = {
+    babyshark: createEmptyMediaBuckets(),
+    pororo: createEmptyMediaBuckets(),
+  };
+  let activeStepMedia = {
+    theme: state.theme,
+    dateStr: formatDateISO(),
+    byStep: { step1: null, step2: null, step3: null, step4: null },
+  };
+  let pendingRevokeUrls = [];
   let weatherData = loadCachedWeather() || {
     tempC: 8,
     minTempC: 6,
@@ -388,14 +435,71 @@ function initDashboardApp() {
     inputSchoolLabel: document.getElementById("input-school-label"),
     inputPrepStart: document.getElementById("input-prep-start"),
     inputDepartureTime: document.getElementById("input-departure-time"),
-    selectLocation: document.getElementById("select-location"),
     chkSound: document.getElementById("chk-sound"),
     chkTts: document.getElementById("chk-tts"),
     btnTestCheer: document.getElementById("btn-test-cheer"),
     btnFullscreen: document.getElementById("btn-fullscreen"),
+    mediaPoolThemeLabel: document.getElementById("media-pool-theme-label"),
+    inputBatchMedia: document.getElementById("input-batch-media"),
+    btnRerollMedia: document.getElementById("btn-reroll-media"),
+    btnClearThemeMedia: document.getElementById("btn-clear-theme-media"),
+    mediaPoolStatus: document.getElementById("media-pool-status"),
+    mediaPoolGrid: document.getElementById("media-pool-grid"),
     customImageGrid: document.getElementById("custom-image-grid"),
     saveStatusNote: document.getElementById("save-status-note"),
   };
+
+  function revokeUrls(urls) {
+    urls.forEach((url) => {
+      if (url && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // Ignore revoke error
+        }
+      }
+    });
+  }
+
+  function revokePendingUrls() {
+    if (pendingRevokeUrls.length === 0) return;
+    const toRevoke = pendingRevokeUrls;
+    pendingRevokeUrls = [];
+    revokeUrls(toRevoke);
+  }
+
+  function rollStepMediaSelection(_reason) {
+    const staleUrls = [];
+    STEP_IDS.forEach((stepId) => {
+      const prevUrl = activeStepMedia.byStep?.[stepId]?.url;
+      if (prevUrl) staleUrls.push(prevUrl);
+    });
+    if (staleUrls.length > 0) {
+      pendingRevokeUrls.push(...staleUrls);
+    }
+
+    const themePool = mediaPoolCache[state.theme] || createEmptyMediaBuckets();
+    const picked = buildStepMediaSelection(themePool, Math.random, activeStepMedia.byStep);
+    const nextByStep = {};
+    STEP_IDS.forEach((stepId) => {
+      const rec = picked[stepId];
+      if (rec?.blob && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+        nextByStep[stepId] = {
+          id: rec.id,
+          displayName: rec.displayName,
+          url: URL.createObjectURL(rec.blob),
+        };
+      } else {
+        nextByStep[stepId] = null;
+      }
+    });
+
+    activeStepMedia = {
+      theme: state.theme,
+      dateStr: formatDateISO(),
+      byStep: nextByStep,
+    };
+  }
 
   function loadLocalState() {
     const today = formatDateISO();
@@ -411,7 +515,12 @@ function initDashboardApp() {
   function loadCachedWeather() {
     try {
       const raw = localStorage.getItem(WEATHER_CACHE_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.locationId === FIXED_LOCATION.id) {
+          return parsed;
+        }
+      }
     } catch {
       // Ignore cache error
     }
@@ -453,6 +562,9 @@ function initDashboardApp() {
       const serverState = await stateRes.json();
       state = normalizeDailyState(serverState, formatDateISO());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (state.theme !== activeStepMedia.theme) {
+        rollStepMediaSelection("server-sync");
+      }
       renderAll();
     } catch {
       // Standalone static hosting mode
@@ -580,6 +692,7 @@ function initDashboardApp() {
     const todayStr = formatDateISO(now);
     if (state.lastStampedDate !== todayStr) {
       persistState(normalizeDailyState(state, todayStr));
+      rollStepMediaSelection("date-change");
       renderCards();
     }
 
@@ -698,7 +811,8 @@ function initDashboardApp() {
       artWrap.className = "step-art-wrap";
       const art = document.createElement("div");
       art.className = "step-art";
-      setMediaSlot(art, state.customImages[step.id], STEP_ILLUSTRATIONS[step.id], step.title);
+      const stepMediaUrl = state.customImages[step.id] || activeStepMedia.byStep?.[step.id]?.url || null;
+      setMediaSlot(art, stepMediaUrl, STEP_ILLUSTRATIONS[step.id], step.title);
 
       const stampOverlay = document.createElement("div");
       stampOverlay.className = "stamp-overlay";
@@ -772,6 +886,7 @@ function initDashboardApp() {
       card.append(head, artWrap, title, actionSlot);
       els.cardsGrid.appendChild(card);
     });
+    revokePendingUrls();
   }
 
   function renderParentModalValues() {
@@ -785,15 +900,85 @@ function initDashboardApp() {
     els.chkSound.checked = Boolean(state.soundEnabled);
     els.chkTts.checked = Boolean(state.ttsEnabled);
 
-    if (els.selectLocation.options.length === 0) {
-      LOCATIONS.forEach((loc) => {
-        const opt = document.createElement("option");
-        opt.value = loc.id;
-        opt.textContent = loc.name;
-        els.selectLocation.appendChild(opt);
+    const activeThemeMeta = THEMES[state.theme];
+    if (els.mediaPoolThemeLabel) {
+      els.mediaPoolThemeLabel.textContent = `현재 테마: ${activeThemeMeta.badge}`;
+    }
+    if (els.mediaPoolGrid) {
+      const themeBuckets = mediaPoolCache[state.theme] || createEmptyMediaBuckets();
+      els.mediaPoolGrid.replaceChildren();
+      STEP_META.forEach((step) => {
+        const items = themeBuckets[step.id] || [];
+        const activePick = activeStepMedia.byStep?.[step.id];
+
+        const box = document.createElement("div");
+        box.className = "media-pool-card";
+
+        const cardHead = document.createElement("div");
+        cardHead.className = "media-pool-card-head";
+        const title = document.createElement("div");
+        title.className = "image-slot-title";
+        title.textContent = `${step.number}. ${step.title}`;
+        const countBadge = document.createElement("span");
+        countBadge.className = "media-pool-count";
+        countBadge.textContent = `${items.length}개`;
+        cardHead.append(title, countBadge);
+
+        const sample = document.createElement("div");
+        sample.className = "media-pool-sample";
+        if (activePick) {
+          sample.textContent = `오늘 표시: ${activePick.displayName}`;
+        } else if (items.length > 0) {
+          sample.textContent = `등록 예: ${items[0].displayName}`;
+        } else {
+          sample.textContent = "미등록 (기본 내장 그림 사용)";
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "image-slot-actions";
+
+        const addLabel = document.createElement("label");
+        addLabel.className = "upload-file-label";
+        addLabel.textContent = "+ 파일 추가";
+        const addInput = document.createElement("input");
+        addInput.type = "file";
+        addInput.multiple = true;
+        addInput.accept = "image/*";
+        addInput.dataset.poolStep = step.id;
+        addInput.addEventListener("change", async (e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = "";
+          if (files.length === 0) return;
+          await handleSlotMediaUpload(step.id, step.title, files);
+        });
+        addLabel.appendChild(addInput);
+
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "clear-img-btn";
+        clearBtn.textContent = "비우기";
+        clearBtn.disabled = items.length === 0;
+        clearBtn.dataset.clearPoolStep = step.id;
+        clearBtn.addEventListener("click", async () => {
+          try {
+            await clearMediaBySlot(state.theme, step.id);
+            mediaPoolCache = await loadMediaPoolByTheme();
+            rollStepMediaSelection("clear-slot");
+            renderAll();
+            renderParentModalValues();
+            if (els.mediaPoolStatus) {
+              els.mediaPoolStatus.textContent = `${activeThemeMeta.name} · ${step.title} 풀을 비웠습니다.`;
+            }
+          } catch (err) {
+            if (els.mediaPoolStatus) els.mediaPoolStatus.textContent = err.message;
+          }
+        });
+
+        actions.append(addLabel, clearBtn);
+        box.append(cardHead, sample, actions);
+        els.mediaPoolGrid.appendChild(box);
       });
     }
-    els.selectLocation.value = state.location.id;
 
     els.customImageGrid.replaceChildren();
     CUSTOM_SLOTS.forEach((slot) => {
@@ -852,6 +1037,9 @@ function initDashboardApp() {
   }
 
   function renderAll() {
+    if (activeStepMedia.theme !== state.theme || activeStepMedia.dateStr !== formatDateISO()) {
+      rollStepMediaSelection("render-guard");
+    }
     els.html.setAttribute("data-theme", state.theme);
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
@@ -900,6 +1088,7 @@ function initDashboardApp() {
       const maxPrecip = morningProbs.length ? Math.max(...morningProbs) : 0;
 
       weatherData = {
+        locationId: FIXED_LOCATION.id,
         tempC: wJson.current?.temperature_2m ?? weatherData.tempC,
         weatherCode: wJson.current?.weather_code ?? 0,
         minTempC: wJson.daily?.temperature_2m_min?.[0] ?? weatherData.minTempC,
@@ -920,21 +1109,131 @@ function initDashboardApp() {
     }
   }
 
+  async function handleSlotMediaUpload(stepId, stepTitle, files) {
+    const items = [];
+    let skipped = 0;
+    for (const file of files) {
+      const mimeType = getImageMimeType(file.name) || (file.type?.startsWith("image/") ? file.type : null);
+      if (!mimeType) {
+        skipped += 1;
+        continue;
+      }
+      const relPath = normalizeRelPath(file.name);
+      items.push({
+        id: buildMediaRecordId(state.theme, stepId, relPath),
+        theme: state.theme,
+        step: stepId,
+        relPath,
+        displayName: extractDisplayName(relPath),
+        mimeType,
+        size: file.size,
+        blob: file,
+      });
+    }
+    try {
+      if (items.length > 0) {
+        await putMediaItems(items);
+        mediaPoolCache = await loadMediaPoolByTheme();
+        rollStepMediaSelection("slot-upload");
+        renderAll();
+        renderParentModalValues();
+      }
+      if (els.mediaPoolStatus) {
+        els.mediaPoolStatus.textContent = `${THEMES[state.theme].name} · ${stepTitle}에 ${items.length}개 저장했습니다.${skipped ? ` (제외 ${skipped}개)` : ""}`;
+      }
+    } catch (err) {
+      if (els.mediaPoolStatus) els.mediaPoolStatus.textContent = err.message;
+    }
+  }
+
+  async function handleBatchMediaUpload(files) {
+    const items = [];
+    let skipped = 0;
+    if (els.mediaPoolStatus) {
+      els.mediaPoolStatus.textContent = "선택한 파일·ZIP을 정리하고 있습니다...";
+    }
+    try {
+      for (const file of files) {
+        const isZip =
+          file.name.toLowerCase().endsWith(".zip") ||
+          file.type === "application/zip" ||
+          file.type === "application/x-zip-compressed";
+        if (isZip) {
+          for await (const entry of parseZipEntries(file, {
+            shouldReadEntry: (entryPath) => classifyMediaPath(entryPath, state.theme) !== null,
+          })) {
+            const meta = classifyMediaPath(entry.path, state.theme);
+            if (!meta) {
+              skipped += 1;
+              continue;
+            }
+            const blob = new Blob([entry.bytes], { type: meta.mimeType });
+            items.push({
+              id: buildMediaRecordId(meta.theme, meta.step, meta.relPath),
+              theme: meta.theme,
+              step: meta.step,
+              relPath: meta.relPath,
+              displayName: meta.displayName,
+              mimeType: meta.mimeType,
+              size: blob.size,
+              blob,
+            });
+          }
+        } else {
+          const meta = classifyMediaPath(file.name, state.theme);
+          if (!meta) {
+            skipped += 1;
+            continue;
+          }
+          items.push({
+            id: buildMediaRecordId(meta.theme, meta.step, meta.relPath),
+            theme: meta.theme,
+            step: meta.step,
+            relPath: meta.relPath,
+            displayName: meta.displayName,
+            mimeType: meta.mimeType,
+            size: file.size,
+            blob: file,
+          });
+        }
+      }
+
+      if (items.length > 0) {
+        await putMediaItems(items);
+        mediaPoolCache = await loadMediaPoolByTheme();
+        rollStepMediaSelection("batch-import");
+        renderAll();
+        renderParentModalValues();
+      }
+      if (els.mediaPoolStatus) {
+        const byTheme = {
+          babyshark: items.filter((it) => it.theme === "babyshark").length,
+          pororo: items.filter((it) => it.theme === "pororo").length,
+        };
+        els.mediaPoolStatus.textContent =
+          items.length > 0
+            ? `총 ${items.length}개 저장 완료 (아기상어 ${byTheme.babyshark}개 · 뽀로로 ${byTheme.pororo}개${skipped ? `, 제외 ${skipped}개` : ""})`
+            : "일치하는 행동 GIF·WebP를 찾지 못했습니다. (각 단계의 '+ 파일 추가'를 이용해 보세요)";
+      }
+    } catch (err) {
+      if (els.mediaPoolStatus) {
+        els.mediaPoolStatus.textContent = err.message || "파일 가져오기에 실패했습니다.";
+      }
+    }
+  }
+
   function applyParentFormChanges() {
-    const loc = LOCATIONS.find((l) => l.id === els.selectLocation.value) || state.location;
-    const locationChanged = loc.id !== state.location.id;
     persistState({
       ...state,
       childName: (els.inputChildName.value || "우리 딸").trim().slice(0, 20),
       schoolLabel: (els.inputSchoolLabel.value || "어린이집").trim().slice(0, 20),
       prepStartTime: els.inputPrepStart.value || state.prepStartTime,
       departureTime: els.inputDepartureTime.value || state.departureTime,
-      location: { ...loc },
+      location: { ...FIXED_LOCATION },
       soundEnabled: els.chkSound.checked,
       ttsEnabled: els.chkTts.checked,
     });
     renderAll();
-    if (locationChanged) refreshWeather();
   }
 
   /* ---------- Event Wiring ---------- */
@@ -990,11 +1289,52 @@ function initDashboardApp() {
   els.parentDialog.querySelectorAll("[data-theme-choice]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const chosen = btn.dataset.themeChoice;
+      const changed = chosen !== state.theme;
       persistState({ ...state, theme: chosen });
+      if (changed) {
+        rollStepMediaSelection("theme-switch");
+      }
       renderAll();
       renderParentModalValues();
     });
   });
+
+  if (els.inputBatchMedia) {
+    els.inputBatchMedia.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      e.target.value = "";
+      if (files.length === 0) return;
+      await handleBatchMediaUpload(files);
+    });
+  }
+
+  if (els.btnRerollMedia) {
+    els.btnRerollMedia.addEventListener("click", () => {
+      rollStepMediaSelection("manual-reroll");
+      renderAll();
+      renderParentModalValues();
+      if (els.mediaPoolStatus) {
+        els.mediaPoolStatus.textContent = `${THEMES[state.theme].name} 테마 그림을 새로 뽑았습니다.`;
+      }
+    });
+  }
+
+  if (els.btnClearThemeMedia) {
+    els.btnClearThemeMedia.addEventListener("click", async () => {
+      try {
+        await clearMediaByTheme(state.theme);
+        mediaPoolCache = await loadMediaPoolByTheme();
+        rollStepMediaSelection("clear-theme");
+        renderAll();
+        renderParentModalValues();
+        if (els.mediaPoolStatus) {
+          els.mediaPoolStatus.textContent = `${THEMES[state.theme].name} 테마 풀을 모두 비웠습니다.`;
+        }
+      } catch (err) {
+        if (els.mediaPoolStatus) els.mediaPoolStatus.textContent = err.message;
+      }
+    });
+  }
 
   els.btnParentUndo.addEventListener("click", () => {
     handleUndoLast();
@@ -1011,8 +1351,8 @@ function initDashboardApp() {
     renderParentModalValues();
   });
 
-  [els.inputChildName, els.inputSchoolLabel, els.inputPrepStart, els.inputDepartureTime, els.selectLocation].forEach(
-    (el) => el.addEventListener("change", applyParentFormChanges)
+  [els.inputChildName, els.inputSchoolLabel, els.inputPrepStart, els.inputDepartureTime].forEach((el) =>
+    el.addEventListener("change", applyParentFormChanges)
   );
   [els.chkSound, els.chkTts].forEach((el) => el.addEventListener("change", applyParentFormChanges));
 
@@ -1060,7 +1400,29 @@ function initDashboardApp() {
     navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
   }
 
+  window.addEventListener("pagehide", () => {
+    const urls = [];
+    STEP_IDS.forEach((stepId) => {
+      const url = activeStepMedia.byStep?.[stepId]?.url;
+      if (url) urls.push(url);
+    });
+    revokeUrls(urls);
+    revokePendingUrls();
+  });
+
   renderAll();
+  loadMediaPoolByTheme()
+    .then((loadedPool) => {
+      mediaPoolCache = loadedPool;
+      rollStepMediaSelection("init");
+      renderCards();
+      if (els.parentDialog.open) {
+        renderParentModalValues();
+      }
+    })
+    .catch(() => {
+      // IndexedDB unavailable; keep built-in SVG illustrations
+    });
   syncFromServerIfEmpty();
   refreshWeather();
   requestWakeLock();
