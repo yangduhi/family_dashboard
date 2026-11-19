@@ -5,20 +5,59 @@ on:
     branches: ["main"]
     paths:
       - "web/**"
+      - "src/**"
+      - "tests/**"
+      - "contracts/**"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-pages.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "web/**"
+      - "src/**"
+      - "tests/**"
+      - "contracts/**"
+      - "pyproject.toml"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
+  verify:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run full verification suite
+        run: python -m pytest tests -q -p no:cacheprovider
+
   deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -28,10 +67,35 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Prepare versioned web bundle
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import shutil
+          from pathlib import Path
+
+          sha = os.environ["GITHUB_SHA"][:12]
+          assert re.fullmatch(r"[0-9a-f]{7,12}", sha), f"Unexpected GITHUB_SHA prefix: {sha!r}"
+
+          shutil.rmtree("_site", ignore_errors=True)
+          shutil.copytree("web", "_site")
+
+          sw_path = Path("_site/sw.js")
+          text = sw_path.read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r'^const CACHE_VERSION = "[^"]+";$',
+              f'const CACHE_VERSION = "sha-{sha}";',
+              text,
+              flags=re.MULTILINE,
+          )
+          assert count == 1, f"Expected exactly 1 CACHE_VERSION assignment in sw.js, got {count}"
+          sw_path.write_text(updated, encoding="utf-8", newline="\n")
+          PY
       - name: Upload web directory artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "web"
+          path: "_site"
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

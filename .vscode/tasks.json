@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Project Control: Doctor",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\ProjectControl\\runtimes\\0.1.2\\Scripts\\python.exe",
+      "args": ["-m", "project_control", "doctor", "--project", "${workspaceFolder}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Project Control: Status",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\ProjectControl\\runtimes\\0.1.2\\Scripts\\python.exe",
+      "args": ["-m", "project_control", "status", "--project", "${workspaceFolder}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Project Control: Verify",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\ProjectControl\\runtimes\\0.1.2\\Scripts\\python.exe",
+      "args": ["-m", "project_control", "verify", "--project", "${workspaceFolder}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Project Control: Refresh Views",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\ProjectControl\\runtimes\\0.1.2\\Scripts\\python.exe",
+      "args": ["-m", "project_control", "refresh", "--project", "${workspaceFolder}"],
+      "problemMatcher": []
+    }
+  ]
+}

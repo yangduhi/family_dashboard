@@ -2,11 +2,11 @@
 config_version = 1
 runtime_version = "0.1.2"
 records_adapter = "filesystem"
-python_executable = "D:/vscode/project-control/.venv/Scripts/python.exe"
+python_executable = ".venv/Scripts/python.exe"
 
 [paths]
-managed_globs = ["src/**", "web/**", "tests/**", "docs/**", "contracts/**", "config/**", "design/**", "pyproject.toml"]
-excluded_globs = [".venv/**", "node_modules/**", ".git/**", "dist/**", ".artifacts/**", ".context/**", "work/**", "evidence/**", "DASHBOARD.md", "TASK.md", "docs/INDEX.md", "docs/reference/**", "**/__pycache__/**", "**/.pytest_cache/**"]
+managed_globs = ["src/**", "web/**", "tests/**", "docs/**", "contracts/**", "config/**", "design/**", ".github/workflows/**", "pyproject.toml"]
+excluded_globs = [".venv/**", ".local/**", "_site/**", "node_modules/**", ".git/**", "dist/**", ".artifacts/**", ".context/**", "work/**", "evidence/**", "DASHBOARD.md", "TASK.md", "docs/INDEX.md", "docs/reference/**", "**/__pycache__/**", "**/.pytest_cache/**", "**/*.egg-info/**"]
 required_globs = ["docs/product/PRD.md", "docs/features/*.md"]
 derived_globs = ["DASHBOARD.md", "TASK.md", "docs/INDEX.md", "docs/reference/**", ".context/**"]
 doc_roots = ["docs/features", "docs/product", "docs/system"]
@@ -20,7 +20,7 @@ cwd = "."
 required = true
 timeout_seconds = 120
 receipt_file = "fullstack_receipt.json"
-depends_on = ["src/**", "web/**", "tests/**", "contracts/**"]
+depends_on = ["src/**", "web/**", "tests/**", "contracts/**", ".github/workflows/**"]
 
 [harness]
 adapter = "visual_diff"

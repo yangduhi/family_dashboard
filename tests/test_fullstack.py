@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -10,8 +11,15 @@ from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
 import pytest
+from jsonschema import Draft202012Validator
 
-from app.server import default_dashboard_state, start_server, validate_dashboard_state
+from app.server import (
+    build_parser,
+    default_dashboard_state,
+    default_state_file,
+    start_server,
+    validate_dashboard_state,
+)
 
 
 def test_default_and_validate_dashboard_state() -> None:
@@ -33,6 +41,96 @@ def test_default_and_validate_dashboard_state() -> None:
 
     with pytest.raises(ValueError):
         validate_dashboard_state({**state, "departureTime": "25:99"})
+
+
+def test_schema_contract_alignment() -> None:
+    root = Path(__file__).resolve().parents[1]
+    schema = json.loads((root / "contracts" / "api" / "dashboard_state.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+
+    base = default_dashboard_state("2026-11-19")
+    valid_variants = [
+        base,
+        validate_dashboard_state(
+            {
+                **base,
+                "theme": "pororo",
+                "childName": "서연",
+                "schoolLabel": "유치원",
+                "stepsCompleted": [True, True, False, False],
+                "soundEnabled": False,
+                "ttsEnabled": False,
+                "location": {"id": "busan", "name": "부산 해운대구", "lat": 35.1631, "lon": 129.1636},
+                "customImages": {**base["customImages"], "mascot": "data:image/png;base64,AAAA"},
+            }
+        ),
+    ]
+    for payload in valid_variants:
+        assert validator.is_valid(payload), list(validator.iter_errors(payload))
+        assert validate_dashboard_state(payload) == payload
+
+    invalid_full_payloads = [
+        {**base, "theme": "pikachu"},
+        {**base, "stepsCompleted": [True, False]},
+        {**base, "departureTime": "25:99"},
+        {**base, "extraTopField": True},
+        {**base, "location": {**base["location"], "lat": 95.0}},
+        {**base, "location": {**base["location"], "lon": -181.0}},
+        {**base, "location": {**base["location"], "extra": "nope"}},
+        {**base, "customImages": {**base["customImages"], "unknownSlot": None}},
+        {**base, "customImages": {**base["customImages"], "mascot": "a" * 2_000_001}},
+    ]
+    for bad in invalid_full_payloads:
+        assert not validator.is_valid(bad), f"Schema unexpectedly accepted invalid payload: {bad}"
+        with pytest.raises(ValueError):
+            validate_dashboard_state(bad)
+
+    # Intentional server-side normalization boundaries beyond static JSON Schema
+    merged_partial = validate_dashboard_state({"theme": "pororo", "childName": "  하윤  "})
+    assert merged_partial["theme"] == "pororo"
+    assert merged_partial["childName"] == "하윤"
+    assert validator.is_valid(merged_partial)
+
+    with pytest.raises(ValueError):
+        validate_dashboard_state({**base, "childName": "   "})
+
+
+def test_deploy_workflow_and_sw_cache_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    sw_js = (root / "web" / "sw.js").read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r'^const CACHE_VERSION = "[^"]+";$',
+        'const CACHE_VERSION = "sha-abcdef123456";',
+        sw_js,
+        flags=re.MULTILINE,
+    )
+    assert count == 1
+    assert 'const CACHE_VERSION = "sha-abcdef123456";' in updated
+    assert "const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;" in sw_js
+
+    workflow = (root / ".github" / "workflows" / "deploy-pages.yml").read_text(encoding="utf-8")
+    assert re.search(r"^permissions:\s*\{\}\s*$", workflow, flags=re.MULTILINE)
+    assert re.search(r"^\s{2}verify:\s*$", workflow, flags=re.MULTILINE)
+    assert "pytest tests" in workflow
+    assert re.search(r"^\s{2}deploy:\s*$", workflow, flags=re.MULTILINE)
+    assert re.search(r"^\s{4}needs:\s*verify\s*$", workflow, flags=re.MULTILINE)
+    assert "refs/heads/main" in workflow
+    assert "assert count == 1" in workflow
+
+
+def test_server_default_state_file_and_cli_override() -> None:
+    root = Path(__file__).resolve().parents[1]
+    state_path = default_state_file(root)
+    assert state_path == root / ".local" / "dashboard_state.json"
+    assert "work" not in state_path.relative_to(root).parts
+
+    default_args = build_parser().parse_args([])
+    assert default_args.state_file is None
+
+    custom_args = build_parser().parse_args(["--state-file", "custom_state.json", "--port", "9090"])
+    assert custom_args.state_file == "custom_state.json"
+    assert custom_args.port == 9090
 
 
 def test_web_ui_contracts_and_js_logic() -> None:

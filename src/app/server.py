@@ -104,6 +104,9 @@ def validate_dashboard_state(payload: dict[str, Any]) -> dict[str, Any]:
     loc = merged["location"]
     if not isinstance(loc, dict):
         raise ValueError("location must be an object")
+    extra_loc_keys = set(loc.keys()) - {"id", "name", "lat", "lon"}
+    if extra_loc_keys:
+        raise ValueError(f"Unsupported location fields: {sorted(extra_loc_keys)}")
     loc_id = _require_str(loc.get("id"), "location.id", min_len=1, max_len=32)
     loc_name = _require_str(loc.get("name"), "location.name", min_len=1, max_len=40)
     lat = loc.get("lat")
@@ -284,15 +287,29 @@ def _discover_lan_ips() -> list[str]:
     return ips
 
 
-def main(argv: list[str] | None = None) -> int:
+def default_state_file(project_root: Path) -> Path:
+    """Return the default runtime state path outside project-control's work/ ledger."""
+    return project_root / ".local" / "dashboard_state.json"
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Family Dashboard local server for Galaxy Tab S7")
     parser.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8080, help="Listen port (default: 8080)")
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--state-file",
+        default=None,
+        help="Runtime state JSON file path (default: .local/dashboard_state.json)",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     project_root = Path(__file__).resolve().parents[2]
     web_dir = project_root / "web"
-    state_file = project_root / "work" / "dashboard_state.json"
+    state_file = Path(args.state_file).expanduser() if args.state_file else default_state_file(project_root)
     server = start_server(web_dir, host=args.host, port=args.port, state_file=state_file)
     actual_port = server.server_port
 

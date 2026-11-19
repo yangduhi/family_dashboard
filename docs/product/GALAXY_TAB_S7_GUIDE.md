@@ -11,7 +11,7 @@
 ### 최초 1회 설정
 1. GitHub([github.com](https://github.com))에서 무료 계정 로그인 후 새 저장소(예: `family_dashboard`, **Public** 권장 — 무료 계정에서 Pages 사용 가능)를 만듭니다.
    - *(개인정보 안내)* Pages에서 입력한 아이 이름·출발 시간·사진과 선택한 동네는 브라우저 저장소(`localStorage`)에 저장됩니다. 날씨를 조회할 때는 선택한 동네의 좌표를 Open-Meteo에 보냅니다.
-2. 이 프로젝트 폴더(`D:\vscode\family_dashboard`)를 GitHub 저장소에 올립니다(`git push -u origin main`).
+2. 이 프로젝트 폴더를 GitHub 저장소에 올립니다(`git push -u origin main`).
 3. GitHub 저장소 상단 **Settings → Pages → Build and deployment → Source**를 **`GitHub Actions`**로 선택합니다.
 4. 배포가 완료되면 HTTPS 주소를 확인합니다. 이 저장소의 배포 주소는 [등원 준비 대시보드](https://yangduhi.github.io/family_dashboard/)입니다.
 
@@ -21,16 +21,24 @@
 3. 이제 태블릿 바탕화면 아이콘을 누르면 **PC가 꺼져 있어도, 태블릿을 재부팅해도** 주소창 없는 전체화면 앱으로 바로 실행됩니다.
 
 ### 이후 유지보수(업데이트) 방법
-- PC에서 디자인·문구·기능을 수정하고 `project-control` 검증 후 GitHub에 올리면(`git push`), 태블릿에서 앱을 열 때 서비스 워커([sw.js](../../web/sw.js))가 자동으로 최신 버전을 받아 적용합니다.
+- PC에서 디자인·문구·기능을 수정하고 `project-control` 검증 후 GitHub에 올리면(`git push`), GitHub Actions가 전체 테스트 통과 후 서비스 워커([sw.js](../../web/sw.js)) 캐시 버전을 최신 커밋 SHA로 자동 갱신해 배포합니다. 태블릿에서 앱을 열면 최신 버전이 자동 적용됩니다.
 
 ---
 
 ## 2. (개발·테스트용) PC에서 수정 직후 미리 확인하기
-웹에 올리기 전에 PC나 태블릿에서 먼저 시험해 보고 싶을 때만 아래 명령으로 로컬 서버를 잠깐 켭니다:
+웹에 올리기 전에 PC나 태블릿에서 먼저 시험해 보고 싶을 때만 프로젝트 전용 가상환경(`.venv`)으로 로컬 서버를 켭니다.
+
+최초 1회 환경 준비(프로젝트 루트에서 실행):
 ```powershell
-$env:PYTHONPATH='D:\vscode\family_dashboard\src'
-D:\vscode\project-control\.venv\Scripts\python.exe -m app.server --host 0.0.0.0 --port 8080
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
+
+로컬 미리보기 서버 실행:
+```powershell
+.\.venv\Scripts\python.exe -m app.server --host 0.0.0.0 --port 8080
+```
+- 상태 파일은 기본으로 `.local\dashboard_state.json`에 저장되며 `--state-file`로 변경할 수 있습니다.
 - PC 브라우저에서 `http://127.0.0.1:8080` 또는 같은 Wi-Fi 태블릿에서 `http://<PC_IP>:8080`으로 바로 확인할 수 있습니다.
 
 ---
