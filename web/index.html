@@ -86,7 +86,7 @@
 
       <div class="track-area">
         <div class="speech-row">
-          <span class="cheer-bubble" id="cheer-bubble">채원이, 같이 아침 먹기 해볼까?</span>
+          <span class="cheer-bubble" id="cheer-bubble" aria-live="polite" aria-atomic="true">채원이, 같이 아침 먹기 해볼까?</span>
           <span class="progress-count-pill" id="progress-count-pill">진행률 0 / 4 완료</span>
         </div>
         <div class="progress-track" aria-hidden="true">
@@ -104,8 +104,6 @@
     <!-- Bottom Band: 4 Morning Preparation Cards -->
     <section class="cards-grid" id="cards-grid" aria-label="등원 준비 4단계"></section>
   </main>
-
-  <div class="particle-layer" id="particle-layer" aria-hidden="true"></div>
 
   <!-- Parent Settings Native Modal (Hidden behind 3-second hold on 🔒) -->
   <dialog id="parent-dialog" class="parent-dialog" closedby="closerequest" aria-labelledby="parent-dialog-title">
@@ -166,21 +164,27 @@
       </section>
 
       <section class="setting-section">
-        <h3>4. 소리 · 칭찬 음성 · 태블릿 화면</h3>
+        <h3>4. 효과음과 화면 움직임</h3>
         <div class="toggle-row">
           <label class="toggle-check">
             <input type="checkbox" id="chk-sound">
-            도장 '쾅!' 효과음 켜기
+            효과음 자동 재생
           </label>
           <label class="toggle-check">
-            <input type="checkbox" id="chk-tts">
-            한국어 칭찬 음성(TTS) 켜기
+            <input type="checkbox" id="chk-final-jingle">
+            전체 완료 징글
+          </label>
+          <label class="toggle-check">
+            <input type="checkbox" id="chk-reduce-motion">
+            화면 움직임 줄이기
           </label>
         </div>
         <div class="btn-row">
-          <button type="button" class="parent-action-btn" id="btn-test-cheer">
-            🔊 도장 소리·음성 테스트
-          </button>
+          <button type="button" class="parent-action-btn" data-preview-sound="stamp">도장음 미리듣기</button>
+          <button type="button" class="parent-action-btn" data-preview-sound="final">전체 완료음 미리듣기</button>
+          <button type="button" class="parent-action-btn" data-preview-sound="undo">취소음 미리듣기</button>
+        </div>
+        <div class="btn-row">
           <button type="button" class="parent-action-btn" id="btn-fullscreen">
             ⛶ 태블릿 전체화면 전환
           </button>

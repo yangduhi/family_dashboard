@@ -193,7 +193,8 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert "아기상어" in html and "뽀로로" in html
     assert "아침 먹기" in assets_js and "세수·양치" in assets_js and "옷 입기" in assets_js and "가방 챙기기" in assets_js
     assert "1500" in app_js and "3000" in app_js
-    assert "stamp-slam" in css and "touch-action: none" in css and "grayscale(" in css
+    assert "stamp-land" in css and "touch-action: none" in css and "grayscale(" in css
+    assert "data-reduced-motion" in css
 
     # Relative PWA paths for subpath HTTPS hosting (GitHub Pages / Cloudflare Pages)
     assert 'href="./manifest.json"' in html
@@ -202,6 +203,8 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert manifest["start_url"] == "./"
     assert manifest["scope"] == "./"
     assert '"./sw.js"' in app_js and '"./index.html"' in sw_js and '"./media_store.js"' in sw_js
+    for audio_asset in ("stamp-audio.js", "audio/stamp.wav", "audio/paper.wav", "audio/ready.wav"):
+        assert json.dumps(f"./{audio_asset}") in sw_js
     assert {icon["sizes"] for icon in manifest["icons"]} >= {"192x192", "512x512"}
     for icon in manifest["icons"]:
         assert icon["src"].startswith("./") and icon["type"] == "image/png"
@@ -406,6 +409,10 @@ def test_fullstack_loopback_http_and_ui() -> None:
         for asset in ("/styles.css", "/assets.js", "/media_store.js", "/app.js", "/manifest.json", "/sw.js"):
             resp = opener.open(base + asset, timeout=5)
             assert resp.status == 200
+        for effect in ("stamp", "paper", "ready"):
+            with opener.open(f"{base}/audio/{effect}.wav", timeout=5) as resp:
+                assert resp.headers.get_content_type() == "audio/wav"
+                assert resp.read(4) == b"RIFF"
         for size in (192, 512):
             with opener.open(f"{base}/icon-{size}.png", timeout=5) as resp:
                 assert resp.status == 200

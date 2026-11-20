@@ -1,4 +1,5 @@
 import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js";
+import { createStampAudio } from "./stamp-audio.js";
 import {
   buildMediaRecordId,
   buildStepMediaSelection,
@@ -19,6 +20,9 @@ export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;
 
 const STORAGE_KEY = "family_dashboard_state_v1";
+const FEEDBACK_KEY = "family_dashboard_stamp_feedback_v1";
+const CELEBRATION_DAY_KEY = "family_dashboard_stamp_celebration_day";
+const STAMP_SETTLE_MS = 320;
 const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v1";
 const MAX_INLINE_ANIMATED_BYTES = 900_000;
 const CUSTOM_SLOTS = [
@@ -238,85 +242,6 @@ function formatKoreanTimeLabel(hhmm) {
   return `${period} ${h12}:${mStr}`;
 }
 
-/* ---------- Web Audio & Speech Synthesis ---------- */
-let audioCtx = null;
-
-function ensureAudioContext() {
-  if (typeof window === "undefined") return null;
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  if (!audioCtx) audioCtx = new Ctx();
-  if (audioCtx.state === "suspended") {
-    audioCtx.resume().catch(() => {});
-  }
-  return audioCtx;
-}
-
-function playStampSound(allDone) {
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  const now = ctx.currentTime;
-
-  // Heavy rubber stamp '쾅!' thud
-  const thudOsc = ctx.createOscillator();
-  const thudGain = ctx.createGain();
-  thudOsc.type = "triangle";
-  thudOsc.frequency.setValueAtTime(165, now);
-  thudOsc.frequency.exponentialRampToValueAtTime(42, now + 0.16);
-  thudGain.gain.setValueAtTime(0.55, now);
-  thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-  thudOsc.connect(thudGain).connect(ctx.destination);
-  thudOsc.start(now);
-  thudOsc.stop(now + 0.19);
-
-  // Bright achievement fanfare notes
-  const notes = allDone ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
-  notes.forEach((freq, idx) => {
-    const t = now + 0.12 + idx * 0.09;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(0.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.27);
-  });
-}
-
-function playUndoSound() {
-  const ctx = ensureAudioContext();
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  [440, 349.23].forEach((freq, idx) => {
-    const t = now + idx * 0.08;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(0.14, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.16);
-  });
-}
-
-function speakCheer(text) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-  try {
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ko-KR";
-    utter.rate = 1.02;
-    utter.pitch = 1.18;
-    window.speechSynthesis.speak(utter);
-  } catch {
-    // Ignore speech synthesis errors on restricted devices
-  }
-}
-
 /* ---------- Browser App Controller ---------- */
 function setMediaSlot(container, customUrl, fallbackSvg, altText) {
   container.replaceChildren();
@@ -426,7 +351,11 @@ async function resizeUploadedImage(file) {
 function initDashboardApp() {
   const DAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
   let state = loadLocalState();
-  let justStampedIndex = -1;
+  const feedback = loadFeedbackSettings();
+  const systemMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const stampAudio = createStampAudio();
+  let stampInputReadyAt = 0;
+  let celebratedOn = "";
   let wakeLockSentinel = null;
   let serverSyncAvailable = false;
   let mediaPoolCache = {
@@ -480,7 +409,6 @@ function initDashboardApp() {
     daycareIcon: document.getElementById("daycare-icon"),
     departureBadge: document.getElementById("departure-badge"),
     cardsGrid: document.getElementById("cards-grid"),
-    particleLayer: document.getElementById("particle-layer"),
     parentLockBtn: document.getElementById("parent-lock-btn"),
     parentHoldRing: document.getElementById("parent-hold-ring"),
     parentDialog: document.getElementById("parent-dialog"),
@@ -493,8 +421,8 @@ function initDashboardApp() {
     inputPrepStart: document.getElementById("input-prep-start"),
     inputDepartureTime: document.getElementById("input-departure-time"),
     chkSound: document.getElementById("chk-sound"),
-    chkTts: document.getElementById("chk-tts"),
-    btnTestCheer: document.getElementById("btn-test-cheer"),
+    chkFinalJingle: document.getElementById("chk-final-jingle"),
+    chkReduceMotion: document.getElementById("chk-reduce-motion"),
     btnFullscreen: document.getElementById("btn-fullscreen"),
     mediaPoolThemeLabel: document.getElementById("media-pool-theme-label"),
     inputBatchMedia: document.getElementById("input-batch-media"),
@@ -544,6 +472,7 @@ function initDashboardApp() {
         nextByStep[stepId] = {
           id: rec.id,
           displayName: rec.displayName,
+          mimeType: rec.mimeType,
           url: URL.createObjectURL(rec.blob),
         };
       } else {
@@ -567,6 +496,38 @@ function initDashboardApp() {
       // Ignore corrupt localStorage
     }
     return createDefaultState(today);
+  }
+
+  function loadFeedbackSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FEEDBACK_KEY));
+      return { finalJingle: saved?.finalJingle !== false, reduceMotion: saved?.reduceMotion === true };
+    } catch {
+      return { finalJingle: true, reduceMotion: false };
+    }
+  }
+
+  function applyFeedbackMotion() {
+    els.html.toggleAttribute("data-reduced-motion", feedback.reduceMotion || systemMotion.matches);
+  }
+
+  function visibleImage(url, mimeType) {
+    if (!els.html.hasAttribute("data-reduced-motion")) return url;
+    return /^image\/(?:gif|webp)$/i.test(mimeType || "") || /^data:image\/(?:gif|webp)[;,]/i.test(url || "")
+      ? null
+      : url;
+  }
+
+  function claimDailyCelebration(day) {
+    if (celebratedOn === day) return false;
+    celebratedOn = day;
+    try {
+      if (localStorage.getItem(CELEBRATION_DAY_KEY) === day) return false;
+      localStorage.setItem(CELEBRATION_DAY_KEY, day);
+    } catch {
+      // The in-memory date still prevents replay during this session.
+    }
+    return true;
   }
 
   function loadCachedWeather() {
@@ -617,6 +578,7 @@ function initDashboardApp() {
       const stateRes = await fetch("./api/state");
       if (!stateRes.ok) return;
       const serverState = await stateRes.json();
+      if (localStorage.getItem(STORAGE_KEY)) return;
       state = normalizeDailyState(serverState, formatDateISO());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       if (state.theme !== activeStepMedia.theme) {
@@ -625,33 +587,6 @@ function initDashboardApp() {
       renderAll();
     } catch {
       // Standalone static hosting mode
-    }
-  }
-
-  function spawnParticles(originEl) {
-    const theme = THEMES[state.theme];
-    const rect = originEl
-      ? originEl.getBoundingClientRect()
-      : { left: window.innerWidth / 2, top: window.innerHeight / 2, width: 0, height: 0 };
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const count = 24;
-
-    for (let i = 0; i < count; i += 1) {
-      const dot = document.createElement("span");
-      dot.className = `burst-particle ${theme.particleType === "star" ? "is-star" : ""}`;
-      const size = 10 + Math.round(Math.random() * 14);
-      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
-      const dist = 75 + Math.random() * 145;
-      dot.style.inlineSize = `${size}px`;
-      dot.style.blockSize = `${size}px`;
-      dot.style.insetInlineStart = `${cx}px`;
-      dot.style.insetBlockStart = `${cy}px`;
-      dot.style.background = theme.particleColors[i % theme.particleColors.length];
-      dot.style.setProperty("--dx", `${Math.round(Math.cos(angle) * dist)}px`);
-      dot.style.setProperty("--dy", `${Math.round(Math.sin(angle) * dist - 24)}px`);
-      els.particleLayer.appendChild(dot);
-      setTimeout(() => dot.remove(), 900);
     }
   }
 
@@ -685,6 +620,7 @@ function initDashboardApp() {
       if (e.button !== 0 && e.pointerType === "mouse") return;
       e.preventDefault();
       e.stopPropagation();
+      if (activePointerId !== null || (e.isTrusted && !e.isPrimary)) return;
       activePointerId = e.pointerId;
       startAt = performance.now();
       buttonEl.classList.add("is-holding");
@@ -707,49 +643,56 @@ function initDashboardApp() {
       if (!inside) reset();
     });
 
-    buttonEl.addEventListener("pointerup", reset);
-    buttonEl.addEventListener("pointercancel", reset);
+    const resetFromActivePointer = (e) => {
+      if (e.pointerId === activePointerId) reset();
+    };
+    buttonEl.addEventListener("pointerup", resetFromActivePointer);
+    buttonEl.addEventListener("pointercancel", resetFromActivePointer);
   }
 
-  function handleStepStamp(stepIndex, cardEl) {
-    const next = applyStamp(state, stepIndex, formatDateISO());
-    if (next === state) return;
-    justStampedIndex = stepIndex;
+  function handleStepStamp(stepIndex) {
+    const now = performance.now();
+    const today = formatDateISO();
+    if (state.lastStampedDate !== today) {
+      renderAll();
+      return;
+    }
+    if (now < stampInputReadyAt || getActiveStepIndex(state.stepsCompleted) !== stepIndex) return;
+
+    const next = applyStamp(state, stepIndex, today);
+    const nextIndex = getActiveStepIndex(next.stepsCompleted);
+    const celebrate = nextIndex === -1 && claimDailyCelebration(today);
+    stampInputReadyAt = now + STAMP_SETTLE_MS;
     persistState(next);
     renderAll();
 
-    const allDone = getActiveStepIndex(state.stepsCompleted) === -1;
-    if (state.soundEnabled) {
-      playStampSound(allDone);
-    }
-    if (state.ttsEnabled) {
-      const step = STEP_META[stepIndex];
-      const theme = THEMES[state.theme];
-      const msg = allDone
-        ? `우와! ${state.childName} 등원 준비 완료! 신나게 ${state.schoolLabel}에 다녀오세요!`
-        : `${theme.cheerPrefix} ${step.title} 완료! ${step.cheer}`;
-      speakCheer(msg);
-    }
-    spawnParticles(cardEl);
-    setTimeout(() => {
-      justStampedIndex = -1;
-    }, 600);
+    const stampedCard = els.cardsGrid.children[stepIndex];
+    stampedCard.classList.add("just-stamped");
+    if (celebrate) stampedCard.classList.add("final-celebration");
+    if (nextIndex !== -1) els.cardsGrid.children[nextIndex].classList.add("next-step-cue");
+    if (state.soundEnabled) stampAudio.stamp(celebrate && feedback.finalJingle);
   }
 
-  function handleUndoLast() {
+  function handleUndoLast(expectedIndex = getLastCompletedIndex(state.stepsCompleted)) {
     const prevLast = getLastCompletedIndex(state.stepsCompleted);
-    if (prevLast < 0) return;
+    if (prevLast < 0 || prevLast !== expectedIndex) return;
+    stampAudio.stop();
+    stampInputReadyAt = performance.now() + STAMP_SETTLE_MS;
     persistState(undoLastStamp(state));
-    if (state.soundEnabled) playUndoSound();
     renderAll();
+    els.cardsGrid.children[prevLast].classList.add("just-unstamped");
+    if (state.soundEnabled) stampAudio.undo();
   }
 
   function renderClockAndCountdown() {
     const now = new Date();
     const todayStr = formatDateISO(now);
     if (state.lastStampedDate !== todayStr) {
+      stampAudio.stop();
+      stampInputReadyAt = 0;
       persistState(normalizeDailyState(state, todayStr));
       rollStepMediaSelection("date-change");
+      renderProgress();
       renderCards();
     }
 
@@ -818,13 +761,14 @@ function initDashboardApp() {
     els.progressCountPill.textContent = `진행률 ${doneCount} / 4 완료`;
 
     if (activeIdx === -1) {
-      els.cheerBubble.textContent = `🎉 ${state.childName} 등원 준비 완료! 최고예요!`;
+      claimDailyCelebration(state.lastStampedDate);
+      els.cheerBubble.textContent = "🏫 준비 끝! 이제 출발해요!";
     } else {
       const step = STEP_META[activeIdx];
       els.cheerBubble.textContent = `${state.childName}, 같이 '${step.title}' 해볼까?`;
     }
 
-    const mascotUrl = resolveThemeMascotUrl(state);
+    const mascotUrl = visibleImage(resolveThemeMascotUrl(state));
     setMediaSlot(els.headerMascot, mascotUrl, theme.mascotSvg, theme.name);
     setMediaSlot(els.trackMascot, mascotUrl, theme.mascotSvg, theme.name);
     setMediaSlot(els.daycareIcon, null, DAYCARE_SVG, state.schoolLabel);
@@ -846,7 +790,7 @@ function initDashboardApp() {
       if (isDone) card.classList.add("is-done");
       else if (isActive) card.classList.add("is-active");
       else card.classList.add("is-locked");
-      if (idx === justStampedIndex) card.classList.add("just-stamped");
+      if (isActive) card.setAttribute("aria-current", "step");
 
       const head = document.createElement("div");
       head.className = "step-card-head";
@@ -858,10 +802,10 @@ function initDashboardApp() {
       helper.className = "active-helper";
       const speech = document.createElement("span");
       speech.className = "active-speech";
-      speech.textContent = "같이 하자!";
+      speech.textContent = "지금 할 일";
       const miniMascot = document.createElement("div");
       miniMascot.className = "mini-mascot";
-      const mascotUrl = resolveThemeMascotUrl(state);
+      const mascotUrl = visibleImage(resolveThemeMascotUrl(state));
       setMediaSlot(miniMascot, mascotUrl, theme.mascotSvg, theme.name);
       helper.append(speech, miniMascot);
       head.append(badge, helper);
@@ -870,14 +814,16 @@ function initDashboardApp() {
       artWrap.className = "step-art-wrap";
       const art = document.createElement("div");
       art.className = "step-art";
-      const stepMediaUrl = state.customImages[step.id] || activeStepMedia.byStep?.[step.id]?.url || null;
+      const pooledMedia = activeStepMedia.byStep[step.id];
+      const stepMediaUrl = visibleImage(state.customImages[step.id]) ||
+        visibleImage(pooledMedia?.url, pooledMedia?.mimeType);
       setMediaSlot(art, stepMediaUrl, STEP_ILLUSTRATIONS[step.id], step.title);
 
       const stampOverlay = document.createElement("div");
       stampOverlay.className = "stamp-overlay";
       const stampInner = document.createElement("div");
       stampInner.className = "stamp-badge-inner";
-      setStampSlot(stampInner, resolveThemeStampUrl(state), mascotUrl, theme);
+      setStampSlot(stampInner, visibleImage(resolveThemeStampUrl(state)), mascotUrl, theme);
       stampOverlay.appendChild(stampInner);
       artWrap.append(art, stampOverlay);
 
@@ -895,14 +841,18 @@ function initDashboardApp() {
         ctaBtn.textContent = "👆 완료! 도장 찍기";
         let pressedPointerId = null;
         ctaBtn.addEventListener("pointerdown", (e) => {
+          if (performance.now() < stampInputReadyAt || (e.isTrusted && !e.isPrimary)) return;
           pressedPointerId = e.pointerId;
+        });
+        ctaBtn.addEventListener("pointercancel", (e) => {
+          if (e.pointerId === pressedPointerId) pressedPointerId = null;
         });
         ctaBtn.addEventListener("click", (e) => {
           // A completed undo hold can place this button under the released pointer.
           if (e.pointerType && e.pointerId !== pressedPointerId) return;
           pressedPointerId = null;
           e.stopPropagation();
-          handleStepStamp(idx, card);
+          handleStepStamp(idx);
         });
         actionSlot.appendChild(ctaBtn);
       } else if (isLastDone) {
@@ -926,7 +876,7 @@ function initDashboardApp() {
             label.textContent = ratio > 0.05 ? "취소하는 중... 계속 꾹!" : "↩ 도장 취소 (1.5초 꾹)";
           },
           () => {
-            handleUndoLast();
+            handleUndoLast(idx);
           }
         );
         actionSlot.appendChild(undoBtn);
@@ -957,7 +907,8 @@ function initDashboardApp() {
     els.inputPrepStart.value = state.prepStartTime;
     els.inputDepartureTime.value = state.departureTime;
     els.chkSound.checked = Boolean(state.soundEnabled);
-    els.chkTts.checked = Boolean(state.ttsEnabled);
+    els.chkFinalJingle.checked = feedback.finalJingle;
+    els.chkReduceMotion.checked = feedback.reduceMotion;
 
     const activeThemeMeta = THEMES[state.theme];
     if (els.mediaPoolThemeLabel) {
@@ -1286,6 +1237,15 @@ function initDashboardApp() {
   }
 
   function applyParentFormChanges() {
+    if (!els.chkSound.checked || feedback.finalJingle !== els.chkFinalJingle.checked) stampAudio.stop();
+    feedback.finalJingle = els.chkFinalJingle.checked;
+    feedback.reduceMotion = els.chkReduceMotion.checked;
+    try {
+      localStorage.setItem(FEEDBACK_KEY, JSON.stringify(feedback));
+    } catch {
+      els.saveStatusNote.textContent = "이 탭을 닫으면 효과 설정이 초기화될 수 있어요.";
+    }
+    applyFeedbackMotion();
     persistState({
       ...state,
       childName: (els.inputChildName.value || "채원이").trim().slice(0, 20),
@@ -1294,7 +1254,6 @@ function initDashboardApp() {
       departureTime: els.inputDepartureTime.value || state.departureTime,
       location: { ...FIXED_LOCATION },
       soundEnabled: els.chkSound.checked,
-      ttsEnabled: els.chkTts.checked,
     });
     renderAll();
   }
@@ -1338,6 +1297,7 @@ function initDashboardApp() {
   });
 
   els.parentDialog.addEventListener("close", () => {
+    stampAudio.stop();
     backdropPointerId = null;
     els.parentDialog.returnValue = "";
   });
@@ -1420,6 +1380,8 @@ function initDashboardApp() {
   });
 
   els.btnParentReset.addEventListener("click", () => {
+    stampAudio.stop();
+    stampInputReadyAt = 0;
     persistState({
       ...state,
       stepsCompleted: [false, false, false, false],
@@ -1432,15 +1394,15 @@ function initDashboardApp() {
   [els.inputChildName, els.inputSchoolLabel, els.inputPrepStart, els.inputDepartureTime].forEach((el) =>
     el.addEventListener("change", applyParentFormChanges)
   );
-  [els.chkSound, els.chkTts].forEach((el) => el.addEventListener("change", applyParentFormChanges));
-
-  els.btnTestCheer.addEventListener("click", () => {
-    applyParentFormChanges();
-    if (state.soundEnabled) playStampSound(false);
-    if (state.ttsEnabled) {
-      const theme = THEMES[state.theme];
-      speakCheer(`${theme.cheerPrefix} ${state.childName} 참 잘했어요!`);
-    }
+  [els.chkSound, els.chkFinalJingle, els.chkReduceMotion].forEach((el) =>
+    el.addEventListener("change", applyParentFormChanges)
+  );
+  els.parentDialog.querySelectorAll("[data-preview-sound]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const kind = button.dataset.previewSound;
+      if (kind === "undo") stampAudio.undo();
+      else stampAudio.stamp(kind === "final" && feedback.finalJingle);
+    });
   });
 
   els.btnFullscreen.addEventListener("click", async () => {
@@ -1471,6 +1433,8 @@ function initDashboardApp() {
     if (document.visibilityState === "visible") {
       requestWakeLock();
       renderClockAndCountdown();
+    } else {
+      stampAudio.stop();
     }
   });
 
@@ -1479,6 +1443,7 @@ function initDashboardApp() {
   }
 
   window.addEventListener("pagehide", () => {
+    stampAudio.stop();
     const urls = [];
     STEP_IDS.forEach((stepId) => {
       const url = activeStepMedia.byStep?.[stepId]?.url;
@@ -1488,6 +1453,11 @@ function initDashboardApp() {
     revokePendingUrls();
   });
 
+  systemMotion.addEventListener("change", () => {
+    applyFeedbackMotion();
+    renderAll();
+  });
+  applyFeedbackMotion();
   renderAll();
   loadMediaPoolByTheme()
     .then((loadedPool) => {

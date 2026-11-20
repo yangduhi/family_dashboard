@@ -47,6 +47,7 @@ MIME_TYPES = {
     ".webp": "image/webp",
     ".gif": "image/gif",
     ".ico": "image/x-icon",
+    ".wav": "audio/wav",
 }
 
 

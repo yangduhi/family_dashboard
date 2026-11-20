@@ -1,8 +1,8 @@
 export const STEP_META = [
-  { id: "step1", number: 1, title: "아침 먹기", cheer: "냠냠 맛있는 아침을 다 먹었어요!" },
-  { id: "step2", number: 2, title: "세수·양치", cheer: "치카치카 반짝반짝 깨끗해졌어요!" },
-  { id: "step3", number: 3, title: "옷 입기", cheer: "예쁜 옷으로 멋지게 갈아입었어요!" },
-  { id: "step4", number: 4, title: "가방 챙기기", cheer: "가방까지 척! 이제 신나게 출발하자!" },
+  { id: "step1", number: 1, title: "아침 먹기" },
+  { id: "step2", number: 2, title: "세수·양치" },
+  { id: "step3", number: 3, title: "옷 입기" },
+  { id: "step4", number: 4, title: "가방 챙기기" },
 ];
 
 export const FIXED_LOCATION = Object.freeze({
@@ -289,9 +289,6 @@ export const THEMES = {
     mascotSvg: BABYSHARK_MASCOT_SVG,
     stampSvg: BABYSHARK_STAMP_SVG,
     stampTitle: "참 잘했어요! 쾅!",
-    cheerPrefix: "뚜루루 뚜루~",
-    particleType: "bubble",
-    particleColors: ["#00bcd4", "#ffeb3b", "#ff7043", "#4dd0e1"],
   },
   pororo: {
     id: "pororo",
@@ -300,8 +297,5 @@ export const THEMES = {
     mascotSvg: PORORO_MASCOT_SVG,
     stampSvg: PORORO_STAMP_SVG,
     stampTitle: "대장 도장 쾅!",
-    cheerPrefix: "노는 게 제일 좋아~",
-    particleType: "star",
-    particleColors: ["#1e88e5", "#ff9800", "#ffd54f", "#4fc3f7"],
   },
 };

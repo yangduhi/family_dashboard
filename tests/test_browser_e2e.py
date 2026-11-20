@@ -494,3 +494,176 @@ def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
 
     assert console_errors == [], f"Unexpected browser console errors: {console_errors}"
     assert page_errors == [], f"Unexpected browser page errors: {page_errors}"
+
+
+def test_stamp_feedback_timing_preferences_and_offline(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    server = start_server(root / "web", {}, state_file=tmp_path / "state.json", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_port}/"
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800}, is_mobile=True, has_touch=True,
+                timezone_id="Asia/Seoul", reduced_motion="no-preference",
+            )
+            context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(url) else route.abort())
+            context.add_init_script("""
+                window.audioStarts = [];
+                window.audioStops = [];
+                window.speechCount = 0;
+                speechSynthesis.speak = () => { speechCount += 1; };
+                const originalStart = AudioBufferSourceNode.prototype.start;
+                const originalStop = AudioBufferSourceNode.prototype.stop;
+                AudioBufferSourceNode.prototype.start = function (when) {
+                    originalStart.call(this, when);
+                    audioStarts.push({
+                        ms: Math.round(this.buffer.duration * 1000),
+                        when,
+                        running: this.context.state === "running",
+                    });
+                };
+                AudioBufferSourceNode.prototype.stop = function () {
+                    originalStop.call(this);
+                    audioStops.push(Math.round(this.buffer.duration * 1000));
+                };
+            """)
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_function("navigator.serviceWorker.controller !== null", timeout=5000)
+
+            def progress(count: int) -> None:
+                expect(page.locator("#progress-count-pill")).to_have_text(f"진행률 {count} / 4 완료")
+
+            def audio(expected: list[int]) -> None:
+                page.wait_for_function("count => audioStarts.length >= count", arg=len(expected), timeout=5000)
+                assert page.evaluate("audioStarts.map(cue => cue.ms)") == expected
+                assert page.evaluate("audioStarts.every(cue => cue.running)")
+
+            page.evaluate("""
+                () => {
+                    document.querySelector(".stamp-cta-btn").click();
+                    const next = document.querySelector(".stamp-cta-btn");
+                    next.dispatchEvent(new PointerEvent("pointerdown", {
+                        pointerType: "touch", pointerId: 5, isPrimary: true, bubbles: true,
+                    }));
+                    next.dispatchEvent(new PointerEvent("click", {
+                        pointerType: "touch", pointerId: 5, isPrimary: true, bubbles: true,
+                    }));
+                }
+            """)
+
+            # The first real tap is tested after a cold offline restart below.
+            progress(1)
+            expect(page.locator(".step-card").nth(1)).to_have_attribute("aria-current", "step")
+            expect(page.locator(".final-celebration")).to_have_count(0)
+            expect(page.locator(".burst-particle")).to_have_count(0)
+            expect(page.locator(".step-card").first.locator(".step-num-badge")).to_have_text("✓")
+
+            page.close()
+            context.set_offline(True)
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_function("navigator.serviceWorker.controller !== null", timeout=5000)
+            progress(1)
+            page.locator(".stamp-cta-btn").tap()
+            progress(2)
+            audio([120])
+            assert page.evaluate("speechCount") == 0
+
+            page.wait_for_timeout(330)
+            page.locator(".stamp-cta-btn").tap()
+            progress(3)
+            audio([120, 120])
+            page.wait_for_timeout(330)
+            page.locator(".stamp-cta-btn").tap()
+            progress(4)
+            audio([120, 120, 120, 340])
+            assert page.evaluate("audioStarts[3].when - audioStarts[2].when") > 0.12
+            expect(page.locator(".final-celebration")).to_have_count(1)
+            expect(page.locator("#cheer-bubble")).to_contain_text("준비 끝! 이제 출발해요!")
+
+            undo = page.locator(".undo-hold-btn")
+            box = undo.bounding_box()
+            assert box is not None
+            x = box["x"] + box["width"] / 2
+            y = box["y"] + box["height"] / 2
+            page.touchscreen.tap(x, y)
+            progress(4)
+            audio([120, 120, 120, 340])
+
+            undo.evaluate("""
+                (button, point) => {
+                    const event = (type, pointerId) => new PointerEvent(type, {
+                        pointerId, pointerType: "touch", button: 0, bubbles: true,
+                        cancelable: true, clientX: point.x, clientY: point.y,
+                    });
+                    button.dispatchEvent(event("pointerdown", 5));
+                    button.dispatchEvent(event("pointerdown", 6));
+                    button.dispatchEvent(event("pointerup", 6));
+                }
+            """, {"x": x, "y": y})
+            progress(3)
+            audio([120, 120, 120, 340, 90])
+            expect(page.locator(".just-unstamped")).to_have_count(1)
+            page.wait_for_timeout(410)
+            page.locator(".stamp-cta-btn").tap()
+            progress(4)
+            audio([120, 120, 120, 340, 90, 120])
+            expect(page.locator(".final-celebration")).to_have_count(0)
+
+            page.reload(wait_until="domcontentloaded")
+            progress(4)
+            assert page.evaluate("audioStarts.length") == 0
+            assert page.evaluate("JSON.parse(localStorage.getItem('family_dashboard_state_v1')).ttsEnabled") is True
+
+            page.emulate_media(reduced_motion="reduce")
+            expect(page.locator("html")).to_have_attribute("data-reduced-motion", "")
+            _open_parent_dialog_by_touch(page)
+            page.locator("#chk-sound").uncheck()
+            page.locator("#chk-reduce-motion").check()
+            page.locator('[data-preview-sound="final"]').click()
+            audio([120, 340])
+            assert page.evaluate("speechCount") == 0
+
+            page.evaluate("""
+                () => {
+                    Object.defineProperty(document, "visibilityState", {value: "hidden", configurable: true});
+                    document.dispatchEvent(new Event("visibilitychange"));
+                    delete document.visibilityState;
+                }
+            """)
+            assert page.evaluate("audioStops.includes(340)")
+
+            page.locator("#chk-final-jingle").uncheck()
+            page.locator('[data-preview-sound="final"]').click()
+            audio([120, 340, 120])
+            progress(4)
+            page.locator("#btn-close-dialog").click()
+            page.emulate_media(reduced_motion="no-preference")
+            expect(page.locator("html")).to_have_attribute("data-reduced-motion", "")
+
+            tomorrow = page.evaluate("Date.now() + 86400000")
+            page.clock.set_fixed_time(tomorrow)
+            page.reload(wait_until="domcontentloaded")
+            progress(0)
+            expect(page.locator("html")).to_have_attribute("data-reduced-motion", "")
+            for completed in range(1, 5):
+                page.locator(".stamp-cta-btn").tap()
+                progress(completed)
+                page.wait_for_timeout(330)
+            assert page.evaluate("audioStarts.length") == 0
+            expect(page.locator(".step-card.is-done")).to_have_count(4)
+            expect(page.locator("#cheer-bubble")).to_contain_text("이제 출발해요!")
+            assert page.locator(".final-celebration .stamp-overlay").evaluate(
+                """element => getComputedStyle(element, "::after").animationName"""
+            ) == "none"
+            context.close()
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

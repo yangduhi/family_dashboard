@@ -766,39 +766,65 @@ html[data-theme="pororo"] .stamp-generated-banner {
   background: #ff7043;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .step-card.just-stamped {
-    animation: card-impact 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-  }
-
-  .step-card.just-stamped .stamp-overlay {
-    animation: stamp-slam 0.48s cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
-  }
+html:not([data-reduced-motion]) .just-stamped .stamp-overlay {
+  animation: stamp-land 310ms ease-out both;
 }
 
-@keyframes stamp-slam {
-  0% {
-    opacity: 0;
-    transform: scale(2.7) rotate(-24deg);
-  }
-  58% {
-    opacity: 1;
-    transform: scale(0.88) rotate(-5deg);
-  }
-  80% {
-    transform: scale(1.06) rotate(-8deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(-7deg);
-  }
+html:not([data-reduced-motion]) .just-unstamped .stamp-overlay {
+  animation: stamp-lift 120ms ease-out both;
 }
 
-@keyframes card-impact {
-  0%, 100% { transform: translate(0, 0); }
-  20% { transform: translate(-3px, 4px); }
-  45% { transform: translate(3px, -2px); }
-  70% { transform: translate(-2px, 2px); }
+html:not([data-reduced-motion]) .next-step-cue {
+  animation: show-next-step 180ms ease-out 180ms both;
+}
+
+html:not([data-reduced-motion]) .final-celebration .stamp-overlay::after {
+  content: "";
+  position: absolute;
+  inline-size: min(92%, 206px);
+  block-size: min(100%, 176px);
+  background:
+    radial-gradient(ellipse, var(--accent-primary) 44%, transparent 58%) 12% 18% / 16px 8px,
+    radial-gradient(ellipse, var(--accent-primary) 44%, transparent 58%) 88% 18% / 8px 16px,
+    radial-gradient(ellipse, var(--accent-primary) 44%, transparent 58%) 12% 82% / 8px 16px,
+    radial-gradient(ellipse, var(--accent-primary) 44%, transparent 58%) 88% 82% / 16px 8px;
+  background-repeat: no-repeat;
+  animation: stamp-sparkle 450ms ease-out 120ms both;
+}
+
+@keyframes stamp-land {
+  0% { opacity: 0; transform: scale(1.3) rotate(-13deg); }
+  39% { opacity: 1; transform: scale(0.94) rotate(-7deg); }
+  74% { opacity: 1; transform: scale(1.025) rotate(-7deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-7deg); }
+}
+
+@keyframes stamp-lift {
+  from { opacity: 0.75; transform: scale(1) rotate(-7deg); }
+  to { opacity: 0; transform: scale(1) rotate(-7deg); }
+}
+
+@keyframes show-next-step {
+  from { outline: 3px solid var(--active-border); outline-offset: 0; }
+  to { outline: 3px solid transparent; outline-offset: 3px; }
+}
+
+@keyframes stamp-sparkle {
+  0% { opacity: 0; transform: scale(0.92); }
+  32% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+
+html[data-reduced-motion] .progress-fill,
+html[data-reduced-motion] .track-mascot,
+html[data-reduced-motion] .step-card,
+html[data-reduced-motion] .stamp-cta-btn {
+  transition: none;
+}
+
+html[data-reduced-motion] .step-card,
+html[data-reduced-motion] .stamp-cta-btn:active {
+  transform: none;
 }
 
 .step-title {
@@ -887,39 +913,6 @@ html[data-theme="pororo"] .stamp-generated-banner {
   font-size: 13px;
   font-weight: 700;
   color: var(--ink-subtle);
-}
-
-/* Particle Burst Layer */
-.particle-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 30;
-  overflow: clip;
-}
-
-.burst-particle {
-  position: fixed;
-  border-radius: 50%;
-  pointer-events: none;
-  will-change: transform, opacity;
-  animation: burst-fly 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.burst-particle.is-star {
-  border-radius: 4px;
-  clip-path: polygon(50% 0%, 63% 35%, 100% 38%, 71% 61%, 80% 98%, 50% 77%, 20% 98%, 29% 61%, 0% 38%, 37% 35%);
-}
-
-@keyframes burst-fly {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(0.5);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.25) rotate(140deg);
-  }
 }
 
 /* Native Parent Settings Modal (<dialog>) */

@@ -1,5 +1,5 @@
 const CACHE_PREFIX = `family-dashboard:${self.registration.scope}:`;
-const CACHE_VERSION = "v6";
+const CACHE_VERSION = "v7";
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const SHELL_ASSETS = [
   "./",
@@ -8,6 +8,10 @@ const SHELL_ASSETS = [
   "./assets.js",
   "./media_store.js",
   "./app.js",
+  "./stamp-audio.js",
+  "./audio/stamp.wav",
+  "./audio/paper.wav",
+  "./audio/ready.wav",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
