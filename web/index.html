@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#00acc1">
+  <meta name="theme-color" content="#ffeb3b">
+  <meta name="family-dashboard-shell" content="2">
+  <meta name="family-dashboard-release" content="v13">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>어린이집 등원 준비 가족 대시보드</title>
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" crossorigin="anonymous" referrerpolicy="no-referrer" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="./styles.css?release=v13">
 </head>
 <body>
   <div class="scenic-layer" aria-hidden="true">
@@ -19,20 +22,76 @@
   </div>
 
   <main class="dashboard-shell" id="dashboard-shell">
-    <!-- Top Header: Date & Clock + Weather & Outfit Tip + Discreet 3s Parent Lock -->
+    <!-- Top header: clock, family supplies, and weather -->
     <header class="header-band">
-      <section class="clock-zone" aria-label="현재 날짜와 시각">
-        <div class="header-mascot" id="header-mascot"></div>
-        <div class="clock-stack">
-          <div class="date-pill" id="date-pill">11월 18일 수요일</div>
-          <div class="clock-line">
-            <span class="clock-period" id="clock-period">오전</span>
-            <span class="clock-digits" id="clock-digits">08:10</span>
+      <div class="clock-zone">
+        <div class="clock-face" id="clock-face" role="img" aria-label="현재 시각">
+          <div class="header-mascot" id="header-mascot" aria-hidden="true"></div>
+          <span class="clock-number clock-number-top">12</span>
+          <span class="clock-number clock-number-right">3</span>
+          <span class="clock-number clock-number-bottom">6</span>
+          <span class="clock-number clock-number-left">9</span>
+          <span class="clock-hand clock-hour"></span>
+          <span class="clock-hand clock-minute"></span>
+          <span class="clock-hand clock-second"></span>
+          <span class="clock-pin"></span>
+        </div>
+      </div>
+
+      <section class="weather-zone" aria-label="오늘과 내일 날씨">
+        <div class="weather-main-row">
+          <div class="weather-now">
+            <div class="weather-date-line">
+              <time class="weather-date" id="date-pill"></time>
+              <span id="weather-source" hidden>저장된 예보</span>
+            </div>
+            <div class="weather-current">
+              <span class="weather-emoji" id="weather-emoji" aria-hidden="true" hidden></span>
+              <strong class="weather-temp" id="weather-temp" hidden></strong>
+              <div class="weather-meta">
+                <span class="weather-cond" id="weather-cond">날씨 확인 중</span>
+                <span id="weather-range" hidden></span>
+              </div>
+            </div>
+          </div>
+
+          <section class="weather-hourly" aria-labelledby="weather-hourly-title">
+            <h2 id="weather-hourly-title">시간별 기온</h2>
+            <div class="hourly-strip" id="hourly-strip">
+              <div class="hourly-cell"><span>9시</span><strong>—</strong></div>
+              <div class="hourly-cell"><span>12시</span><strong>—</strong></div>
+              <div class="hourly-cell"><span>15시</span><strong>—</strong></div>
+              <div class="hourly-cell"><span>18시</span><strong>—</strong></div>
+            </div>
+          </section>
+
+          <section class="weather-tomorrow" aria-labelledby="tomorrow-title">
+            <div class="tomorrow-heading">
+              <h2 id="tomorrow-title">내일</h2>
+              <time id="tomorrow-date"></time>
+            </div>
+            <div class="tomorrow-condition-line">
+              <span id="tomorrow-icon" aria-hidden="true" hidden></span>
+              <span id="tomorrow-condition">예보 확인 중</span>
+            </div>
+            <dl class="tomorrow-range" id="tomorrow-range" hidden>
+              <div><dt>최저</dt><dd id="tomorrow-low"></dd></div>
+              <div><dt>최고</dt><dd id="tomorrow-high"></dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <div class="weather-footer">
+          <p class="weather-tip-bar" id="weather-tip-bar">날씨 정보를 확인하고 있어요</p>
+          <div class="air-badge" id="air-badge">
+            <span>미세먼지</span>
+            <strong id="air-grade">확인 중</strong>
+            <span class="air-badge-reading" id="air-pm25" title="초미세먼지 농도(µg/m³)" hidden></span>
           </div>
         </div>
       </section>
 
-      <section class="weather-zone" aria-label="오늘 날씨와 미세먼지">
+      <div class="header-actions">
         <button
           id="parent-lock-btn"
           class="parent-lock-btn"
@@ -46,35 +105,11 @@
           </svg>
           <span class="parent-lock-icon" aria-hidden="true">🔒</span>
         </button>
-
-        <div class="weather-main-row">
-          <div class="air-badge good" id="air-badge">
-            <span class="air-badge-label">미세먼지</span>
-            <span class="air-badge-emoji" id="air-emoji">😊</span>
-            <span class="air-badge-grade" id="air-grade">좋음</span>
-          </div>
-
-          <div class="weather-now">
-            <span class="weather-emoji" id="weather-emoji">☀️</span>
-            <span class="weather-temp" id="weather-temp">8°</span>
-            <div class="weather-meta">
-              <span class="weather-cond" id="weather-cond">맑음 · 서울 강동구 상일동</span>
-              <span id="weather-range">최고 13° · 최저 6° · 초미세 12</span>
-            </div>
-          </div>
-
-          <div class="hourly-strip" id="hourly-strip" aria-label="시간대별 기온">
-            <div class="hourly-cell"><span>9시</span><strong>8°</strong></div>
-            <div class="hourly-cell"><span>12시</span><strong>12°</strong></div>
-            <div class="hourly-cell"><span>15시</span><strong>13°</strong></div>
-            <div class="hourly-cell"><span>18시</span><strong>10°</strong></div>
-          </div>
-        </div>
-
-        <div class="weather-tip-bar" id="weather-tip-bar">
-          💡 아침 8° 쌀쌀 — 아이 겉옷 챙기기 · 우산 필요 없어요
-        </div>
-      </section>
+        <button type="button" class="supplies-button" id="supplies-button" aria-label="키즈노트"
+          aria-haspopup="dialog" aria-controls="supplies-dialog" hidden>
+          <img src="./kidsnote_app_icon.svg?release=v13" alt="" width="36" height="36">
+        </button>
+      </div>
     </header>
 
     <!-- Middle Band: Departure Countdown & Theme Mascot Progress Track -->
@@ -86,7 +121,7 @@
 
       <div class="track-area">
         <div class="speech-row">
-          <span class="cheer-bubble" id="cheer-bubble" aria-live="polite" aria-atomic="true">채원이, 같이 아침 먹기 해볼까?</span>
+          <span class="cheer-bubble" id="cheer-bubble" aria-live="polite" aria-atomic="true">친구야, 같이 아침 먹기 해볼까?</span>
           <span class="progress-count-pill" id="progress-count-pill">진행률 0 / 4 완료</span>
         </div>
         <div class="progress-track" aria-hidden="true">
@@ -105,6 +140,8 @@
     <section class="cards-grid" id="cards-grid" aria-label="등원 준비 4단계"></section>
   </main>
 
+  <button type="button" id="shell-update" class="shell-update" hidden>새 버전 적용</button>
+
   <!-- Parent Settings Native Modal (Hidden behind 3-second hold on 🔒) -->
   <dialog id="parent-dialog" class="parent-dialog" closedby="closerequest" aria-labelledby="parent-dialog-title">
     <div class="dialog-head">
@@ -113,6 +150,12 @@
     </div>
 
     <div class="dialog-body">
+      <small id="shell-release" class="status-note"></small>
+      <section class="setting-section" id="supplies-details" aria-labelledby="supplies-details-title" hidden>
+        <h3 id="supplies-details-title">키즈노트 당일 준비물</h3>
+        <p id="supplies-status" role="status"></p>
+        <a id="supplies-login" href="./api/supplies/login" hidden>가족 보드 로그인</a>
+      </section>
       <section class="setting-section">
         <h3>1. 캐릭터 테마 선택 (아이 화면에는 숨겨짐)</h3>
         <div class="theme-picker">
@@ -142,7 +185,7 @@
         <div class="form-grid">
           <label class="field-label">
             아이 이름 / 애칭
-            <input type="text" id="input-child-name" maxlength="20" placeholder="채원이">
+            <input type="text" id="input-child-name" maxlength="20" placeholder="친구야">
           </label>
           <label class="field-label">
             기관 명칭
@@ -232,6 +275,25 @@
     </div>
   </dialog>
 
-  <script type="module" src="./app.js"></script>
+  <dialog id="supplies-dialog" class="supplies-dialog" closedby="closerequest" aria-labelledby="supplies-dialog-title">
+    <div class="dialog-head">
+      <h2 id="supplies-dialog-title">키즈노트 당일 준비물</h2>
+      <form method="dialog">
+        <button type="submit" class="dialog-close-btn" autofocus>닫기</button>
+      </form>
+    </div>
+    <div class="dialog-body">
+      <p id="supplies-dialog-status" role="status"></p>
+      <ol id="supplies-list" class="supplies-list" hidden></ol>
+      <section id="kidsnote-bulletins" aria-labelledby="kidsnote-bulletins-title" hidden>
+        <h3 id="kidsnote-bulletins-title">다가오는 일정과 안내</h3>
+        <ol id="kidsnote-bulletin-list" class="supplies-list"></ol>
+      </section>
+      <a id="supplies-dialog-login" href="./api/supplies/login" hidden>가족 보드 로그인</a>
+    </div>
+  </dialog>
+
+  <script type="module" src="./app.js?release=v13"></script>
+  <script type="module" src="./supplies.js?release=v13"></script>
 </body>
 </html>

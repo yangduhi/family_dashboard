@@ -31,7 +31,7 @@ export const DAYCARE_SVG = `
   <path d="M86 28 L90 44 H104 L96 28 Z" fill="#ffab91" opacity="0.85"/>
   <!-- Signboard: 어린이집 -->
   <rect x="28" y="13" width="60" height="19" rx="9.5" fill="#fff59d" stroke="#6d4c41" stroke-width="2.5"/>
-  <text x="58" y="26.5" text-anchor="middle" font-size="11.5" font-weight="900" fill="#5d4037" font-family="Pretendard, Noto Sans KR, sans-serif">어린이집</text>
+  <text x="58" y="26.5" text-anchor="middle" font-size="11.5" font-weight="700" fill="#5d4037">어린이집</text>
   <!-- Cute rounded windows with flower boxes -->
   <rect x="27" y="51" width="17" height="15" rx="4" fill="#b3e5fc" stroke="#6d4c41" stroke-width="2.4"/>
   <rect x="72" y="51" width="17" height="15" rx="4" fill="#b3e5fc" stroke="#6d4c41" stroke-width="2.4"/>
@@ -230,13 +230,13 @@ const BABYSHARK_MASCOT_SVG = `
 
 const BABYSHARK_STAMP_SVG = `
 <svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <circle cx="90" cy="90" r="82" fill="#fff9c4" stroke="#00acc1" stroke-width="7"/>
+  <circle cx="90" cy="90" r="82" fill="#fff9c4" stroke="#875500" stroke-width="7"/>
   <circle cx="90" cy="90" r="71" fill="none" stroke="#ff7043" stroke-width="3.5" stroke-dasharray="9 6"/>
   <g transform="translate(36, 16) scale(0.9)">
     ${BABYSHARK_MASCOT_SVG}
   </g>
-  <rect x="20" y="118" width="140" height="34" rx="17" fill="#00acc1" stroke="#ffffff" stroke-width="3"/>
-  <text x="90" y="140" text-anchor="middle" font-size="20" font-weight="900" fill="#ffffff" font-family="Pretendard, Noto Sans KR, sans-serif">참 잘했어요! 쾅!</text>
+  <rect x="20" y="118" width="140" height="34" rx="17" fill="#875500" stroke="#ffffff" stroke-width="3"/>
+  <text x="90" y="140" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">참 잘했어요! 쾅!</text>
 </svg>`;
 
 const PORORO_MASCOT_SVG = `
@@ -278,7 +278,7 @@ const PORORO_STAMP_SVG = `
     ${PORORO_MASCOT_SVG}
   </g>
   <rect x="20" y="118" width="140" height="34" rx="17" fill="#ff7043" stroke="#ffffff" stroke-width="3"/>
-  <text x="90" y="140" text-anchor="middle" font-size="20" font-weight="900" fill="#ffffff" font-family="Pretendard, Noto Sans KR, sans-serif">대장 도장 쾅!</text>
+  <text x="90" y="140" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">대장 도장 쾅!</text>
 </svg>`;
 
 export const THEMES = {

@@ -1,5 +1,7 @@
 # 어린이집 등원 준비 가족 대시보드 설계서 (`family_dashboard`)
 
+> 2026년 11월 18일 작성한 초기 설계 기록입니다. 현재 동작과 인수 조건은 [제품 요구사항](../../product/PRD.md)과 [키즈노트 기능 명세](../../features/FEAT-002-kidsnote-supplies.md)를 따릅니다.
+
 > **대상 기기:** 삼성 갤럭시 탭 S7 (11인치, 2560×1600, 16:10 가로 전체화면 기준)
 > **관제 기준:** [project-control](file:///D:/vscode/project-control/AGENTS.md) (`v0.1.2`, `fullstack` 템플릿 및 4단계 검증 루프)
 

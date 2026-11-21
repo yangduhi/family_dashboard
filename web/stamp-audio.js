@@ -15,7 +15,9 @@ export function createStampAudio() {
   const ready = Promise.all(Object.entries(CLIPS).map(async ([name, path]) => {
     if (!AudioContext || !OfflineAudioContext) return [name, null];
     try {
-      const response = await fetch(new URL(path, import.meta.url));
+      const url = new URL(path, import.meta.url);
+      url.search = new URL(import.meta.url).search;
+      const response = await fetch(url);
       if (!response.ok) return [name, null];
       const decoder = new OfflineAudioContext(1, 1, 24_000);
       return [name, await decoder.decodeAudioData(await response.arrayBuffer())];

@@ -1,13 +1,22 @@
 # QUALITY — family_dashboard
 
-실행 결과·입력 무결성·현재 적용성 기준과 런타임 분담을 정의합니다. 상세 체크 선언은 [config/workflow.toml](../../config/workflow.toml)을 기준으로 합니다.
+실행 결과·입력 무결성·현재 적용성 기준을 정의합니다. 체크 선언은 [config/workflow.toml](../../config/workflow.toml)을 따릅니다.
 
-## 1. 런타임 역할 분담
-- **관제 CLI (`project-control 0.1.2`)**: `${LOCALAPPDATA}\ProjectControl\runtimes\0.1.2\Scripts\python.exe` (VS Code 태스크 및 `begin`/`verify`/`record-review`/`refresh` 실행).
-- **프로젝트 검증·서버 (`.venv`)**: 프로젝트 로컬 `.venv/Scripts/python.exe`(`pyproject.toml` `dev` 의존성: `pytest`, `jsonschema`, `playwright`).
+## 1. 런타임 역할
+- 관제 CLI는 설정된 `project-control` 런타임을 사용하며 모든 명령에 `--project <절대경로>`를 명시합니다.
+- 프로젝트 검증과 로컬 서버는 `.venv/Scripts/python.exe`를 사용합니다. 개발 의존성은 `pyproject.toml`을 따릅니다.
 
-## 2. 필수 검증 명령 및 통과 기준
-- 로컬/격리 후보 체크(`fullstack_smoke`): `python -m pytest tests -q -p no:cacheprovider`
-  - `tests/test_fullstack.py`: 상태 유효성, JSON Schema 양방향 정합성, Node.js ES Module 단위 테스트, 루프백 HTTP/API 통합 및 `fullstack_receipt.json` 생성, 배포 워크플로·SW 계약 검증.
-  - `tests/test_browser_e2e.py`: Playwright Chromium(1280×800, 터치, SW 차단, Open-Meteo 모킹) 차일드 락·터치 홀드 해제 회귀·테마 영속성 및 콘솔/페이지 에러 0건.
-- 원격 CI 게이트: `.github/workflows/deploy-pages.yml`의 `verify` 잡이 실패하면 `deploy` 잡은 실행되지 않습니다.
+## 2. 코드와 브라우저 검증
+- 프로젝트 루트에서 `python -m pytest tests -q -p no:cacheprovider`를 실행합니다. 필수 체크는 `fullstack_smoke`입니다.
+- `tests/test_fullstack.py`는 상태·JSON Schema·Node 소비 계약·루프백 HTTP/API·배포 워크플로와 서비스 워커 계약을 확인합니다.
+- `tests/test_browser_e2e.py`는 Playwright Chromium에서 차일드 락·터치 해제·테마 영속성·효과음과 움직임 감소를 확인합니다. 모킹한 날씨 결과를 실제 기상 API 검증으로 확대하지 않습니다.
+- `tests/test_supplies_contract.py`, `tests/test_supplies_browser.py`는 준비물 계약과 SW 활성 브라우저의 아이콘 배치·강조·0건 상태 조회·상세 창·포커스 복귀·인증 실패·날짜 전환·오프라인을 확인합니다.
+- 동일 프로필·출처에서 이전 서비스 워커로 실행한 뒤 새 버전을 적용합니다. 자산 일부 실패 시 기존 묶음의 일관성, 복구 후 업데이트, 사용자 호칭·설정·GIF 보존을 확인합니다. 새 프로필 성공만으로 기존 설치의 갱신을 확정하지 않습니다.
+- 비공개 백엔드 테스트는 해당 저장소에서 별도로 수행합니다. 공개 UI 체크와 백엔드·D1·수집·게시 체크의 결과를 혼합하지 않습니다. 원격 CI의 `verify`가 실패하면 `deploy`를 실행하지 않습니다.
+
+## 3. 운영 통과 기준과 남은 검증
+- 코드 테스트 통과는 원문 의미 분석·운영 게시·S7 실기기 성공을 대신하지 않습니다. 최신 결과와 미확인은 [운영 종합](kidsnote-supplies-activation.md)에 기록하며 과거 커밋의 테스트 수를 최신 통과 수로 재사용하지 않습니다.
+- 자료 충분성은 승인된 문서의 본문 전체와 공식 원본 모든 프레임, 날짜·대상·반복·조건·정정·취소의 연결로 검증합니다. 목록 종료·OCR 성공·후보 0건만으로 `EMPTY`를 확정하지 않습니다. 보호자 확인은 별도 근거로 표시합니다.
+- 06:00 KST 마감은 자연 예약에서 서버에 처음 게시된 유효한 당일 결과로 검증합니다. 수동 실행이나 예약 등록 성공으로 대체하지 않습니다. 최초 게시 후 변경·누락 보완도 확인합니다.
+- 인증된 기존 출처의 업데이트·오프라인·인증 만료와 S7 홈 화면 실행·실제 터치는 별도 통과 기준입니다. 자료 충분성, 자연 예약 마감, 기존 설치 적용과 실기기 확인의 미완료 항목을 운영 문서에서 계속 추적합니다.
+- 실계정 검수는 원문을 승인된 환경의 메모리에서 처리하고 허용된 결과만 출력합니다. 전체 DOM·원본 이미지·미검증 이미지 영역·개인정보는 도구 출력이나 공개 영수증에 넣지 않습니다.

@@ -48,6 +48,8 @@ export function getImageMimeType(fileName) {
   return IMAGE_MIME_BY_EXT[lower.slice(dotIdx)] || null;
 }
 
+const POSTER_DIRECTORY = /(^|\/)posters?\//i;
+
 /**
  * Classify a ZIP or batch-uploaded image path into { theme, step, relPath, displayName, mimeType }.
  * Returns null for macOS metadata, hidden files, poster PNGs, unsupported extensions, or unknown steps.
@@ -57,13 +59,13 @@ export function classifyMediaPath(entryPath, fallbackTheme = "pororo") {
   if (!relPath || relPath.endsWith("/")) return null;
   if (/(^|\/)__MACOSX(\/|$)/i.test(relPath)) return null;
   if (/(^|\/)\./.test(relPath)) return null;
-  if (/(^|\/)poster\//i.test(relPath)) return null;
+  if (POSTER_DIRECTORY.test(relPath)) return null;
 
   const mimeType = getImageMimeType(relPath);
   if (!mimeType) return null;
 
   let theme = SUPPORTED_THEMES.includes(fallbackTheme) ? fallbackTheme : "pororo";
-  if (/아기상어|baby[-_ ]?shark|shark/i.test(relPath)) {
+  if (/아기상어|(?:아빠|엄마|할머니|할아버지)상어|shark/i.test(relPath)) {
     theme = "babyshark";
   } else if (/뽀로로|pororo|crong|eddy|loopy|petty/i.test(relPath)) {
     theme = "pororo";
@@ -357,7 +359,7 @@ export async function loadMediaPoolByTheme() {
       req.onerror = () => reject(req.error || new Error("미디어 목록 조회에 실패했습니다."));
     });
     records.forEach((rec) => {
-      if (result[rec.theme] && result[rec.theme][rec.step]) {
+      if (!POSTER_DIRECTORY.test(rec.relPath) && result[rec.theme] && result[rec.theme][rec.step]) {
         result[rec.theme][rec.step].push(rec);
       }
     });

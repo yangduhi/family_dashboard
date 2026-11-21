@@ -1,5 +1,7 @@
 # 어린이집 등원 준비 가족 대시보드 (`family_dashboard`) Implementation Plan
 
+> 2026년 11월 18일 작성한 초기 설계 기록입니다. 현재 동작과 인수 조건은 [제품 요구사항](../../product/PRD.md)과 [키즈노트 기능 명세](../../features/FEAT-002-kidsnote-supplies.md)를 따릅니다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 갤럭시 탭 S7(16:10 가로 화면)에서 단독(PWA) 및 로컬 서버 겸용으로 동작하며, 차일드 락·'쾅!' 도장 성취 효과·1.5초 롱프레스 도장 취소·부모 설정 내 아기상어/뽀로로 테마 전환 및 일반 사진(`PNG`/`JPG`) 교체를 지원하는 어린이집 등원 준비 대시보드 앱을 `project-control` 기준으로 구축한다.

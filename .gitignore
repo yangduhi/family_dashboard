@@ -19,3 +19,8 @@ Desktop.ini
 /TASK.md
 /docs/INDEX.md
 /docs/reference/
+
+# Local account cache, attachments and private review evidence
+/.wrangler/
+/.codex-attachments/
+/.insane-review/

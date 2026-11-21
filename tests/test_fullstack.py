@@ -29,7 +29,7 @@ from app.server import (
 def test_default_and_validate_dashboard_state() -> None:
     state = default_dashboard_state("2026-11-18")
     assert state["theme"] == "babyshark"
-    assert state["childName"] == "채원이"
+    assert state["childName"] == "친구야"
     assert state["stepsCompleted"] == [False, False, False, False]
     assert state["lastStampedDate"] == "2026-11-18"
     assert state["departureTime"] == "08:50"
@@ -47,7 +47,9 @@ def test_default_and_validate_dashboard_state() -> None:
             "location": {"id": "seoul", "name": "서울 중구", "lat": 37.5665, "lon": 126.9780},
         }
     )
-    assert migrated["childName"] == "채원이"
+    assert migrated["childName"] == "친구야"
+    assert validate_dashboard_state({**state, "childName": "우리 딸"})["childName"] == "친구야"
+    assert validate_dashboard_state({**state, "childName": "별이"})["childName"] == "별이"
     assert migrated["location"] == FIXED_LOCATION
 
     with pytest.raises(ValueError):
@@ -148,6 +150,10 @@ def test_deploy_workflow_and_sw_cache_contract() -> None:
     assert count == 1
     assert 'const CACHE_VERSION = "sha-abcdef123456";' in updated
     assert "const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;" in sw_js
+    html = (root / "web" / "index.html").read_text(encoding="utf-8")
+    # v12 caches navigations containing the old marker. Do not let it cache versioned HTML.
+    assert '<meta name="family-dashboard-shell" content="1">' not in html
+    assert '<meta name="family-dashboard-shell" content="2">' in html and 'family-dashboard-shell" content="2"' in sw_js
 
     workflow = (root / ".github" / "workflows" / "deploy-pages.yml").read_text(encoding="utf-8")
     assert re.search(r"^permissions:\s*\{\}\s*$", workflow, flags=re.MULTILINE)
@@ -156,7 +162,9 @@ def test_deploy_workflow_and_sw_cache_contract() -> None:
     assert re.search(r"^\s{2}deploy:\s*$", workflow, flags=re.MULTILINE)
     assert re.search(r"^\s{4}needs:\s*verify\s*$", workflow, flags=re.MULTILINE)
     assert "refs/heads/main" in workflow
-    assert "assert count == 1" in workflow
+    assert "version_line.finditer" in workflow
+    assert 'text.replace(f"?release={template}", f"?release={release}")' in workflow
+    assert 'family-dashboard-release' in workflow
 
 
 def test_server_default_state_file_and_cli_override() -> None:
@@ -189,7 +197,7 @@ def test_web_ui_contracts_and_js_logic() -> None:
     assert "select-location" not in html and "selectLocation" not in app_js
     assert "fixed-location-badge" in html and "서울 강동구 상일동" in html
     assert "media-pool-grid" in html and "서울 강동구 상일동" in assets_js
-    assert "채원이" in html and "어린이집" in assets_js
+    assert "친구야" in html and "어린이집" in assets_js
     assert "아기상어" in html and "뽀로로" in html
     assert "아침 먹기" in assets_js and "세수·양치" in assets_js and "옷 입기" in assets_js and "가방 챙기기" in assets_js
     assert "1500" in app_js and "3000" in app_js
@@ -198,8 +206,9 @@ def test_web_ui_contracts_and_js_logic() -> None:
 
     # Relative PWA paths for subpath HTTPS hosting (GitHub Pages / Cloudflare Pages)
     assert 'href="./manifest.json"' in html
-    assert 'href="./styles.css"' in html
-    assert 'src="./app.js"' in html
+    release = re.search(r'^const CACHE_VERSION = "([^"]+)";$', sw_js, re.M)[1]
+    assert f'href="./styles.css?release={release}"' in html
+    assert f'src="./app.js?release={release}"' in html
     assert manifest["start_url"] == "./"
     assert manifest["scope"] == "./"
     assert '"./sw.js"' in app_js and '"./index.html"' in sw_js and '"./media_store.js"' in sw_js
@@ -266,7 +275,7 @@ const todayReset = normalizeDailyState(yesterday, '2026-11-18');
 assert.deepEqual(todayReset.stepsCompleted, [false, false, false, false]);
 assert.equal(todayReset.lastStampedDate, '2026-11-18');
 assert.equal(todayReset.theme, 'pororo');
-assert.equal(todayReset.childName, '채원이');
+assert.equal(todayReset.childName, '친구야');
 assert.deepEqual(todayReset.location, {{
   id: 'gangdong-sangil',
   name: '서울 강동구 상일동',
@@ -327,6 +336,12 @@ assert.equal(cShark.step, 'step2');
 assert.equal(cShark.mimeType, 'image/gif');
 
 assert.equal(classifyMediaPath('pororo_morning_60/poster/pororo/bag_01.png'), null);
+assert.equal(classifyMediaPath('posters/daddy_shark_breakfast_v01.png'), null);
+for (const shark of ['아빠상어', '엄마상어', '할머니상어', '할아버지상어']) {{
+  const media = classifyMediaPath(`${{shark}}/01_아침먹기/01_spoon.webp`, 'pororo');
+  assert.equal(media.theme, 'babyshark');
+  assert.equal(media.step, 'step1');
+}}
 assert.equal(classifyMediaPath('.DS_Store'), null);
 assert.equal(classifyMediaPath('__MACOSX/pororo/._bag_01.gif'), null);
 

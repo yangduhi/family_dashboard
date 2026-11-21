@@ -3,3 +3,5 @@
 *.bat text=crlf
 *.cmd text=crlf
 *.png binary
+# Keep upstream license text verbatim.
+web/fonts/OFL-Pretendard.txt whitespace=-blank-at-eol

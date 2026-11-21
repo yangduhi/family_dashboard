@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Family dashboard supplies today v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "targetDate",
+    "serverNow",
+    "evaluatedAt",
+    "checkedAt",
+    "publishedAt",
+    "state",
+    "deadlineState",
+    "items",
+    "reasonCode",
+    "latestAttempt",
+    "complete"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "targetDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "serverNow": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checkedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "publishedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "evaluatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "enum": [
+        "READY",
+        "EMPTY",
+        "NEEDS_REVIEW",
+        "AUTH_REQUIRED",
+        "PENDING"
+      ]
+    },
+    "deadlineState": {
+      "enum": [
+        "PENDING",
+        "ON_TIME",
+        "LATE",
+        "MISSED"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "bulletins": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "status",
+          "date",
+          "title",
+          "detail",
+          "sourceDate"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "EVENT",
+              "PREPARATION",
+              "INFORMATION"
+            ]
+          },
+          "status": {
+            "enum": [
+              "VERIFIED",
+              "REVIEW_REQUIRED"
+            ]
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "sourceDate": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "guardianConfirmation": {
+      "type": "object",
+      "required": [
+        "source",
+        "sourceDate"
+      ],
+      "properties": {
+        "source": {
+          "const": "GUARDIAN"
+        },
+        "sourceDate": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dailyAssessment": {
+      "type": "object",
+      "required": [
+        "blockers",
+        "documentIssues"
+      ],
+      "properties": {
+        "blockers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "DAILY_LIVE_DISABLED",
+              "RELEASE_APPROVAL_MISSING",
+              "LOGIN_PROOF_MISSING",
+              "SOURCE_PROOF_MISSING",
+              "SOURCE_PROOF_UNVERIFIED",
+              "DAILY_CHECK_FAILED"
+            ]
+          }
+        },
+        "documentIssues": {
+          "type": "object",
+          "required": [
+            "unread",
+            "detailUnverified",
+            "attachmentUnverified",
+            "instructionsUnverified"
+          ],
+          "properties": {
+            "unread": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "detailUnverified": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attachmentUnverified": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "instructionsUnverified": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "reasonCode": {
+      "$ref": "#/$defs/reason"
+    },
+    "latestAttempt": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "status",
+        "reasonCode",
+        "startedAt",
+        "finishedAt"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED"
+          ]
+        },
+        "reasonCode": {
+          "$ref": "#/$defs/reason"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+    },
+    "item": {
+      "type": "object",
+      "required": [
+        "label",
+        "quantity",
+        "condition",
+        "applicableDate",
+        "sourceType",
+        "sourceDate",
+        "sourceRef"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "quantity": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 80,
+          "exclusiveMinimum": 0
+        },
+        "condition": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "applicableDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "sourceType": {
+          "enum": [
+            "report",
+            "notice",
+            "calendar"
+          ]
+        },
+        "sourceDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "sourceRef": {
+          "type": "string",
+          "pattern": "^src-[A-Za-z0-9_-]{1,110}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "READY",
+              "EMPTY"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "complete": {
+            "const": true
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "complete": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "items": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "EMPTY",
+              "AUTH_REQUIRED",
+              "PENDING"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "items": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "guardianConfirmation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "complete": {
+            "const": false
+          },
+          "items": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

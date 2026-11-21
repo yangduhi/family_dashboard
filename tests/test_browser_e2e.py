@@ -5,6 +5,7 @@ import json
 import re
 import threading
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
@@ -87,6 +88,7 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
         zf.writestr("뽀로로/등원준비/01_breakfast.gif", TINY_GIF_BYTES, compress_type=zipfile.ZIP_DEFLATED)
         zf.writestr("뽀로로/등원준비/02_wash_brush.gif", TINY_GIF_BYTES, compress_type=zipfile.ZIP_DEFLATED)
         zf.writestr("pororo_morning_60/poster/pororo/bag_01.png", TINY_PNG_BYTES, compress_type=zipfile.ZIP_DEFLATED)
+        zf.writestr("posters/daddy_shark_pack_bag_v01.png", TINY_PNG_BYTES, compress_type=zipfile.ZIP_DEFLATED)
 
     slot_png_path = tmp_path / "custom_wash.png"
     slot_png_path.write_bytes(TINY_PNG_BYTES)
@@ -141,7 +143,17 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
             def _mock_open_meteo(route) -> None:
                 url = route.request.url
                 weather_urls.append(url)
-                payload = MOCK_AIR_JSON if "air-quality-api" in url else MOCK_FORECAST_JSON
+                now = datetime.now(timezone(timedelta(hours=9)))
+                today = now.date().isoformat()
+                payload = {"current": {**MOCK_AIR_JSON["current"], "time": now.strftime("%Y-%m-%dT%H:%M")}}
+                if "air-quality-api" not in url:
+                    payload = {
+                        "current": {**MOCK_FORECAST_JSON["current"], "time": now.strftime("%Y-%m-%dT%H:%M")},
+                        "daily": {**MOCK_FORECAST_JSON["daily"], "time": [today]},
+                        "hourly": {**MOCK_FORECAST_JSON["hourly"], "time": [
+                            today + entry[10:] for entry in MOCK_FORECAST_JSON["hourly"]["time"]
+                        ]},
+                    }
                 route.fulfill(
                     status=200,
                     content_type="application/json",
@@ -150,9 +162,11 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
 
             page.route("**/*open-meteo.com/**", _mock_open_meteo)
 
+            page.route("https://cdn.jsdelivr.net/**", lambda route: route.fulfill(content_type="text/css", body=""))
             page.goto(base_url, wait_until="domcontentloaded")
-            expect(page.locator("#weather-cond")).to_contain_text("서울 강동구 상일동", timeout=5000)
-            expect(page.locator("#cheer-bubble")).to_contain_text("채원이")
+            expect(page.locator("#weather-temp")).to_have_text("9°")
+            expect(page.locator("#weather-cond")).not_to_contain_text("상일동")
+            expect(page.locator("#cheer-bubble")).to_contain_text("친구야")
             expect(page.locator("#daycare-icon svg")).to_contain_text("어린이집")
             assert any("latitude=37.5566&longitude=127.1654" in u for u in weather_urls), weather_urls
 
@@ -241,6 +255,28 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
             page.locator("#btn-reroll-media").click()
             expect(page.locator("#media-pool-status")).to_contain_text("단계별로 1개만 있어 바꿀 다른 그림이 없습니다")
 
+            # With two choices, the visible card changes unless a fixed picture overrides it.
+            page.locator('input[data-pool-step="step1"]').set_input_files(
+                {"name": "second_breakfast.gif", "mimeType": "image/gif", "buffer": TINY_GIF_BYTES}
+            )
+            expect(page.locator(".media-pool-count").first).to_have_text("2개")
+            selected = page.locator(".media-pool-sample").first
+            previous = selected.inner_text()
+            page.locator("#btn-reroll-media").click()
+            assert selected.inner_text() != previous
+
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('input[data-custom-slot="step1"]').set_input_files(str(slot_png_path))
+            page.locator("#btn-reroll-media").click()
+            expect(page.locator("#media-pool-status")).to_contain_text("섹션 6 고정 그림")
+            expect(card0.locator(".step-art img")).to_have_attribute("src", re.compile(r"^data:image/png"))
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
+            ):
+                page.locator('[data-reset-custom-slot="step1"]').click()
+
             # Section 6 direct GIF upload with empty MIME preserves data:image/gif (never flattened to JPEG)
             empty_mime_gif = tmp_path / "direct_slot.gif"
             empty_mime_gif.write_bytes(TINY_GIF_BYTES)
@@ -306,7 +342,7 @@ def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) ->
 
             page.reload(wait_until="domcontentloaded")
             expect(page.locator("html")).to_have_attribute("data-theme", "pororo")
-            expect(page.locator("#weather-cond")).to_contain_text("서울 강동구 상일동", timeout=5000)
+            expect(page.locator("#weather-cond")).not_to_contain_text("상일동")
             expect(cards.nth(0).locator(".step-art img")).to_have_attribute("src", re.compile(r"^blob:"), timeout=5000)
             expect(cards.nth(1).locator(".step-art img")).to_have_attribute("src", re.compile(r"^blob:"), timeout=5000)
 
@@ -361,6 +397,7 @@ def test_browser_broken_image_falls_back_to_svg(tmp_path: Path) -> None:
             page = context.new_page()
             page.route("**/*open-meteo.com/**", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(MOCK_FORECAST_JSON)))
             page.route("**/missing-asset-for-fallback-test.gif", lambda r: r.abort())
+            page.route("https://cdn.jsdelivr.net/**", lambda route: route.fulfill(content_type="text/css", body=""))
 
             page.goto(base_url, wait_until="domcontentloaded")
             step3_art = page.locator(".step-card").nth(2).locator(".step-art")
@@ -406,6 +443,7 @@ def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
                 lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(MOCK_FORECAST_JSON)),
             )
 
+            page.route("https://cdn.jsdelivr.net/**", lambda route: route.fulfill(content_type="text/css", body=""))
             page.goto(base_url, wait_until="domcontentloaded")
             _open_parent_dialog_by_touch(page)
 
@@ -430,21 +468,23 @@ def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
                 "src", re.compile(r"^data:image/gif;")
             )
 
-            # 2. Switch to pororo -> falls back to common mascot (PNG) since pororo-specific is empty
+            # The clock uses the built-in Pororo until a theme-specific mascot is uploaded.
             dialog = page.locator("#parent-dialog")
             with page.expect_response(
                 lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
             ):
                 dialog.locator('[data-theme-choice="pororo"]').click()
-            expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator('#header-mascot svg circle[stroke="#ff7043"]')).to_have_count(2)
+            expect(page.locator("#track-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
 
-            # Register pororo-specific mascot -> replaces all 3 mascot slots for pororo
+            # Register the Pororo mascot for all three theme-specific slots.
             with page.expect_response(
                 lambda r: r.url.endswith("/api/state") and r.request.method == "POST" and r.status == 200
             ):
                 page.locator('input[data-custom-slot="mascot_pororo"]').set_input_files(
                     {"name": "pororo.png", "mimeType": "image/png", "buffer": TINY_PNG_BYTES}
                 )
+            expect(page.locator("#header-mascot img")).to_have_attribute("alt", "뽀로로")
             expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
             expect(page.locator("#track-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
             expect(page.locator(".step-card.is-active .mini-mascot img")).to_have_attribute(
@@ -463,6 +503,7 @@ def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
             assert stored_imgs["mascot_babyshark"] is None
             assert stored_imgs["mascot_pororo"].startswith("data:image/png;")
             assert stored_imgs["mascot"].startswith("data:image/png;")
+            expect(page.locator("#header-mascot img")).to_have_attribute("alt", "뽀로로")
 
             page.locator("#btn-save-close").click()
             expect(dialog).not_to_have_attribute("open", "")
@@ -481,6 +522,7 @@ def test_browser_theme_mascots_and_generated_stamp(tmp_path: Path) -> None:
             page.reload(wait_until="domcontentloaded")
             expect(page.locator("html")).to_have_attribute("data-theme", "pororo")
             expect(page.locator("#header-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
+            expect(page.locator("#track-mascot img")).to_have_attribute("src", re.compile(r"^data:image/png;"))
             expect(page.locator(".step-card").nth(0).locator(".stamp-generated img")).to_have_attribute(
                 "src", re.compile(r"^data:image/png;")
             )
@@ -559,6 +601,7 @@ def test_stamp_feedback_timing_preferences_and_offline(tmp_path: Path) -> None:
             # The first real tap is tested after a cold offline restart below.
             progress(1)
             expect(page.locator(".step-card").nth(1)).to_have_attribute("aria-current", "step")
+            expect(page.locator("#track-mascot > .swim-forward")).to_have_css("animation-name", "swim-forward")
             expect(page.locator(".final-celebration")).to_have_count(0)
             expect(page.locator(".burst-particle")).to_have_count(0)
             expect(page.locator(".step-card").first.locator(".step-num-badge")).to_have_text("✓")
@@ -569,6 +612,10 @@ def test_stamp_feedback_timing_preferences_and_offline(tmp_path: Path) -> None:
             page.goto(url, wait_until="domcontentloaded")
             page.wait_for_function("navigator.serviceWorker.controller !== null", timeout=5000)
             progress(1)
+            assert page.evaluate("""async () => {
+                const faces = await document.fonts.load('700 20px "Pretendard Offline"', '세수·양치');
+                return faces.length === 1 && faces[0].status === "loaded";
+            }""")
             page.locator(".stamp-cta-btn").tap()
             progress(2)
             audio([120])
@@ -584,6 +631,7 @@ def test_stamp_feedback_timing_preferences_and_offline(tmp_path: Path) -> None:
             audio([120, 120, 120, 340])
             assert page.evaluate("audioStarts[3].when - audioStarts[2].when") > 0.12
             expect(page.locator(".final-celebration")).to_have_count(1)
+            expect(page.locator("#track-mascot > .swim-forward")).to_have_count(0)
             expect(page.locator("#cheer-bubble")).to_contain_text("준비 끝! 이제 출발해요!")
 
             undo = page.locator(".undo-hold-btn")
@@ -654,6 +702,8 @@ def test_stamp_feedback_timing_preferences_and_offline(tmp_path: Path) -> None:
             for completed in range(1, 5):
                 page.locator(".stamp-cta-btn").tap()
                 progress(completed)
+                if completed < 4:
+                    expect(page.locator("#track-mascot > .swim-forward")).to_have_css("animation-name", "none")
                 page.wait_for_timeout(330)
             assert page.evaluate("audioStarts.length") == 0
             expect(page.locator(".step-card.is-done")).to_have_count(4)

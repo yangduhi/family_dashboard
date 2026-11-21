@@ -1,5 +1,5 @@
-import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js";
-import { createStampAudio } from "./stamp-audio.js";
+import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v13";
+import { createStampAudio } from "./stamp-audio.js?release=v13";
 import {
   buildMediaRecordId,
   buildStepMediaSelection,
@@ -14,7 +14,7 @@ import {
   parseZipEntries,
   putMediaItems,
   STEP_IDS,
-} from "./media_store.js";
+} from "./media_store.js?release=v13";
 
 export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;
@@ -23,8 +23,17 @@ const STORAGE_KEY = "family_dashboard_state_v1";
 const FEEDBACK_KEY = "family_dashboard_stamp_feedback_v1";
 const CELEBRATION_DAY_KEY = "family_dashboard_stamp_celebration_day";
 const STAMP_SETTLE_MS = 320;
-const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v1";
+const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v2";
+const SEOUL_WEATHER_DATE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", dateStyle: "short" });
+const WEATHER_HOURS = [9, 12, 15, 18];
+const WEATHER_CACHE_MAX_MS = 3 * 60 * 60 * 1000;
+const CURRENT_MAX_MS = 60 * 60 * 1000;
+const SEOUL_LONG_DATE = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric",
+  month: "long", day: "numeric", weekday: "long" });
+const SEOUL_SHORT_DATE = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric",
+  day: "numeric", weekday: "short" });
 const MAX_INLINE_ANIMATED_BYTES = 900_000;
+const DEFAULT_CHILD_NAME = "친구야";
 const CUSTOM_SLOTS = [
   { key: "mascot_babyshark", label: "🦈 아기상어 마스코트 (전용)" },
   { key: "mascot_pororo", label: "🐧 뽀로로 마스코트 (전용)" },
@@ -58,7 +67,7 @@ export function formatDateISO(date = new Date()) {
 export function createDefaultState(todayStr = formatDateISO()) {
   return {
     theme: "babyshark",
-    childName: "채원이",
+    childName: DEFAULT_CHILD_NAME,
     schoolLabel: "어린이집",
     departureTime: "08:50",
     prepStartTime: "07:50",
@@ -93,11 +102,8 @@ export function normalizeDailyState(rawState, todayStr = formatDateISO()) {
   if (state.theme !== "babyshark" && state.theme !== "pororo") {
     state.theme = "babyshark";
   }
-  if (!state.childName || typeof state.childName !== "string" || state.childName.trim() === "우리 딸") {
-    state.childName = "채원이";
-  } else {
-    state.childName = state.childName.trim().slice(0, 20) || "채원이";
-  }
+  const childName = typeof state.childName === "string" ? state.childName.trim().slice(0, 20) : "";
+  state.childName = !childName || ["우리 딸"].includes(childName) ? DEFAULT_CHILD_NAME : childName;
   if (!Array.isArray(state.stepsCompleted) || state.stepsCompleted.length !== 4) {
     state.stepsCompleted = [false, false, false, false];
   } else {
@@ -187,51 +193,102 @@ export function computeCountdown(nowDate, prepStartTime, departureTime) {
 }
 
 export function buildWeatherTip(tempC, minTempC, maxTempC, precipProb, pm25) {
-  const t = Math.round(Number(tempC ?? 10));
-  const rain = Math.round(Number(precipProb ?? 0));
-  const dust = Math.round(Number(pm25 ?? 12));
+  const t = Number.isFinite(tempC) ? Math.round(tempC) : null;
+  const rain = Number.isFinite(precipProb) ? Math.round(precipProb) : null;
+  const dust = Number.isFinite(pm25) ? Math.round(pm25) : null;
 
   let outfit = `포근한 ${t}° — 가벼운 등원복 좋아요`;
   if (t <= 4) {
-    outfit = `아침 ${t}° 추워요 — 따뜻한 패딩·목도리 챙기기`;
+    outfit = `현재 ${t}° 추워요 — 따뜻한 패딩·목도리 챙기기`;
   } else if (t <= 11) {
-    outfit = `아침 ${t}° 쌀쌀 — 아이 겉옷 챙기기`;
+    outfit = `현재 ${t}° 쌀쌀 — 아이 겉옷 챙기기`;
   } else if (t <= 18) {
     outfit = `선선한 ${t}° — 얇은 가디건·긴팔 추천`;
   } else if (t >= 26) {
     outfit = `더운 ${t}° — 시원한 옷·물병·모자 챙기기`;
   }
 
-  let umbrella = "우산 필요 없어요";
+  let umbrella = "";
+  if (rain !== null && rain < 30) umbrella = `강수확률 최대 ${rain}%`;
   if (rain >= 55) {
-    umbrella = `비 확률 ${rain}% — 우산·장화 챙기기`;
+    umbrella = `강수확률 최대 ${rain}% — 우산·장화 챙기기`;
   } else if (rain >= 30) {
-    umbrella = `비 소식(${rain}%) — 접이식 우산 챙기면 안심`;
+    umbrella = `강수확률 최대 ${rain}% — 접이식 우산 챙기면 안심`;
   }
 
-  const parts = [`💡 ${outfit}`, umbrella];
+  const parts = [t === null ? "" : outfit, umbrella];
   if (dust > 35) {
     parts.push("미세먼지 주의 — 마스크 챙기기");
   }
-  return parts.join(" · ");
+  return parts.filter(Boolean).join(" · ");
 }
 
+const WEATHER_CODES = [
+  [[0], "☀️", "맑음"],
+  [[1, 2], "⛅", "구름 조금"],
+  [[3], "☁️", "흐림"],
+  [[45, 48], "🌫️", "안개"],
+  [[51, 53, 55, 56, 57], "🌧️", "이슬비"],
+  [[61, 63, 65, 66, 67], "🌧️", "비"],
+  [[71, 73, 75, 77, 85, 86], "❄️", "눈"],
+  [[80, 81, 82], "🌦️", "소나기"],
+  [[95, 96, 99], "⛈️", "뇌우"],
+];
+
 function weatherCodeToDisplay(code) {
-  if (code === 0) return { emoji: "☀️", text: "맑음" };
-  if (code <= 3) return { emoji: "⛅", text: "구름조금" };
-  if (code <= 48) return { emoji: "🌫️", text: "안개" };
-  if (code <= 67 || (code >= 80 && code <= 82)) return { emoji: "🌧️", text: "비" };
-  if (code <= 77 || (code >= 85 && code <= 86)) return { emoji: "❄️", text: "눈" };
-  return { emoji: "⛈️", text: "천둥번개" };
+  const match = WEATHER_CODES.find(([codes]) => codes.includes(code));
+  return match ? { emoji: match[1], text: match[2] } : null;
+}
+
+function timely(timestamp, now, maxAge) {
+  return Number.isFinite(timestamp) && timestamp <= now && now - timestamp <= maxAge;
+}
+
+function seoulMeasurementTime(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
+    ? Date.parse(value + "+09:00") : NaN;
+}
+
+function datedForecast(daily, date) {
+  const index = Array.isArray(daily?.time) ? daily.time.indexOf(date) : -1;
+  if (index < 0) return null;
+  const min = daily.temperature_2m_min?.[index];
+  const max = daily.temperature_2m_max?.[index];
+  const code = daily.weather_code?.[index];
+  return {
+    date,
+    code: weatherCodeToDisplay(code) ? code : null,
+    min: Number.isFinite(min) && (!Number.isFinite(max) || min <= max) ? min : null,
+    max: Number.isFinite(max) && (!Number.isFinite(min) || min <= max) ? max : null,
+  };
+}
+
+function forecastSnapshot(payload, now) {
+  const date = SEOUL_WEATHER_DATE.format(now);
+  const times = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
+  const hourly = WEATHER_HOURS.map(hour =>
+    payload.hourly?.temperature_2m?.[times.indexOf(`${date}T${String(hour).padStart(2, "0")}:00`)] ?? null);
+  const probabilities = Array.from({length:12}, (_, index) =>
+    payload.hourly?.precipitation_probability?.[times.indexOf(`${date}T${String(index + 7).padStart(2, "0")}:00`)]);
+  return {
+    date, fetchedAt: now, measuredAt: seoulMeasurementTime(payload.current?.time),
+    tempC: payload.current?.temperature_2m, weatherCode: payload.current?.weather_code,
+    daily: datedForecast(payload.daily, date),
+    tomorrow: datedForecast(payload.daily, SEOUL_WEATHER_DATE.format(now + 86_400_000)),
+    hourly,
+    precipProb: probabilities.every(value => Number.isFinite(value) && value >= 0 && value <= 100)
+      ? Math.max(...probabilities) : null,
+  };
 }
 
 function airQualityDisplay(pm25, pm10) {
-  const v25 = Number(pm25 ?? 12);
-  const v10 = Number(pm10 ?? 22);
-  if (v25 <= 15 && v10 <= 30) return { grade: "좋음", emoji: "😊", cls: "good" };
-  if (v25 <= 35 && v10 <= 80) return { grade: "보통", emoji: "🙂", cls: "moderate" };
-  if (v25 <= 75 && v10 <= 150) return { grade: "나쁨", emoji: "😷", cls: "bad" };
-  return { grade: "매우나쁨", emoji: "🚨", cls: "very-bad" };
+  if (![pm25, pm10].every(value => Number.isFinite(value) && value >= 0)) return { grade: "확인 불가", cls: "" };
+  const v25 = pm25;
+  const v10 = pm10;
+  if (v25 <= 15 && v10 <= 30) return { grade: "좋음", cls: "good" };
+  if (v25 <= 35 && v10 <= 80) return { grade: "보통", cls: "moderate" };
+  if (v25 <= 75 && v10 <= 150) return { grade: "나쁨", cls: "bad" };
+  return { grade: "매우나쁨", cls: "very-bad" };
 }
 
 function formatKoreanTimeLabel(hhmm) {
@@ -356,6 +413,7 @@ function initDashboardApp() {
   const stampAudio = createStampAudio();
   let stampInputReadyAt = 0;
   let celebratedOn = "";
+  let previousProgress = "";
   let wakeLockSentinel = null;
   let serverSyncAvailable = false;
   let mediaPoolCache = {
@@ -368,36 +426,30 @@ function initDashboardApp() {
     byStep: { step1: null, step2: null, step3: null, step4: null },
   };
   let pendingRevokeUrls = [];
-  let weatherData = loadCachedWeather() || {
-    tempC: 8,
-    minTempC: 6,
-    maxTempC: 13,
-    weatherCode: 0,
-    pm10: 20,
-    pm25: 10,
-    precipProb: 0,
-    hourly: [
-      { hour: "9시", temp: 8 },
-      { hour: "12시", temp: 12 },
-      { hour: "15시", temp: 13 },
-      { hour: "18시", temp: 10 },
-    ],
-    offline: true,
-  };
+  let weatherData = loadCachedWeather();
+  let airData = null;
+  let weatherPending;
+  let weatherDay;
 
   const els = {
     html: document.documentElement,
     headerMascot: document.getElementById("header-mascot"),
     datePill: document.getElementById("date-pill"),
-    clockPeriod: document.getElementById("clock-period"),
-    clockDigits: document.getElementById("clock-digits"),
+    clockFace: document.getElementById("clock-face"),
     airBadge: document.getElementById("air-badge"),
-    airEmoji: document.getElementById("air-emoji"),
     airGrade: document.getElementById("air-grade"),
+    airPM25: document.getElementById("air-pm25"),
     weatherEmoji: document.getElementById("weather-emoji"),
     weatherTemp: document.getElementById("weather-temp"),
     weatherCond: document.getElementById("weather-cond"),
+    weatherSource: document.getElementById("weather-source"),
     weatherRange: document.getElementById("weather-range"),
+    tomorrowDate: document.getElementById("tomorrow-date"),
+    tomorrowIcon: document.getElementById("tomorrow-icon"),
+    tomorrowLow: document.getElementById("tomorrow-low"),
+    tomorrowHigh: document.getElementById("tomorrow-high"),
+    tomorrowCondition: document.getElementById("tomorrow-condition"),
+    tomorrowRange: document.getElementById("tomorrow-range"),
     hourlyStrip: document.getElementById("hourly-strip"),
     weatherTipBar: document.getElementById("weather-tip-bar"),
     countdownLabel: document.getElementById("countdown-label"),
@@ -536,7 +588,7 @@ function initDashboardApp() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed?.locationId === FIXED_LOCATION.id) {
-          return parsed;
+          return { ...parsed, cached: true };
         }
       }
     } catch {
@@ -694,19 +746,27 @@ function initDashboardApp() {
       rollStepMediaSelection("date-change");
       renderProgress();
       renderCards();
+
     }
 
-    const month = now.getMonth() + 1;
-    const date = now.getDate();
-    const dayName = DAYS_KO[now.getDay()];
-    els.datePill.textContent = `${month}월 ${date}일 ${dayName}요일`;
+    const seoulDay = SEOUL_WEATHER_DATE.format(now);
+    if (weatherDay !== seoulDay) {
+      const changed = weatherDay !== undefined;
+      weatherDay = seoulDay;
+      renderWeather();
+      if (changed) refreshWeather();
+    }
+
+    els.datePill.dateTime = seoulDay;
+    els.datePill.textContent = SEOUL_LONG_DATE.format(now);
 
     const h24 = now.getHours();
-    const period = h24 < 12 ? "오전" : "오후";
-    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    els.clockPeriod.textContent = period;
-    els.clockDigits.textContent = `${String(h12).padStart(2, "0")}:${mm}`;
+    const minutes = now.getMinutes();
+    const timeLabel = formatKoreanTimeLabel(`${String(h24).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`);
+    els.clockFace.setAttribute("aria-label", `현재 시각 ${timeLabel}`);
+    els.clockFace.style.setProperty("--hour-angle", `${(h24 % 12) * 30 + minutes / 2}deg`);
+    els.clockFace.style.setProperty("--minute-angle", `${minutes * 6}deg`);
+    els.clockFace.style.setProperty("--second-angle", `${now.getSeconds() * 6}deg`);
 
     const countdown = computeCountdown(now, state.prepStartTime, state.departureTime);
     els.countdownLabel.textContent = `${state.schoolLabel} 출발까지`;
@@ -715,39 +775,61 @@ function initDashboardApp() {
     els.departureBadge.textContent = `출발 ${formatKoreanTimeLabel(state.departureTime)}`;
   }
 
+  function renderTomorrowWeather(forecast, now) {
+    const instant = now + 86_400_000;
+    const date = SEOUL_WEATHER_DATE.format(instant);
+    els.tomorrowDate.dateTime = date;
+    els.tomorrowDate.textContent = SEOUL_SHORT_DATE.format(instant);
+    const available = forecast?.date === date ? forecast : null;
+    const condition = weatherCodeToDisplay(available?.code);
+    const hasRange = [available?.min, available?.max].some(Number.isFinite);
+    els.tomorrowIcon.hidden = !condition;
+    els.tomorrowIcon.textContent = condition?.emoji ?? "";
+    els.tomorrowCondition.textContent = condition?.text ??
+      (hasRange ? "날씨 미확인" : weatherPending ? "예보 확인 중" : "예보 확인 불가");
+    els.tomorrowRange.hidden = !hasRange;
+    for (const [element, value] of [[els.tomorrowLow, available?.min], [els.tomorrowHigh, available?.max]]) {
+      element.textContent = Number.isFinite(value) ? `${Math.round(value)}°` : "—";
+    }
+  }
+
   function renderWeather() {
-    const cond = weatherCodeToDisplay(weatherData.weatherCode);
-    const air = airQualityDisplay(weatherData.pm25, weatherData.pm10);
+    const now = Date.now();
+    const available = timely(weatherData?.fetchedAt, now, WEATHER_CACHE_MAX_MS) ? weatherData : null;
+    const date = SEOUL_WEATHER_DATE.format(now);
+    const today = available?.date === date ? available : null;
+    // A cached tomorrow row may still serve today's range after midnight with its actual date.
+    const daily = today?.daily ?? (available?.tomorrow?.date === date ? available.tomorrow : null);
+    const current = timely(today?.measuredAt, now, CURRENT_MAX_MS) &&
+      SEOUL_WEATHER_DATE.format(today.measuredAt) === date ? today : null;
+    const cond = weatherCodeToDisplay(current?.weatherCode);
+    const measured = timely(airData?.measuredAt, now, CURRENT_MAX_MS) &&
+      SEOUL_WEATHER_DATE.format(airData.measuredAt) === date ? airData : null;
+    const air = airQualityDisplay(measured?.pm25, measured?.pm10);
 
     els.airBadge.className = `air-badge ${air.cls}`;
-    els.airEmoji.textContent = air.emoji;
-    els.airGrade.textContent = air.grade;
+    els.airGrade.textContent = air.cls || !weatherPending ? air.grade : "확인 중";
+    els.airPM25.hidden = !Number.isFinite(measured?.pm25);
+    els.airPM25.textContent = els.airPM25.hidden ? "" : `초미세 ${Math.round(measured.pm25)}`;
 
-    els.weatherEmoji.textContent = cond.emoji;
-    els.weatherTemp.textContent = `${Math.round(weatherData.tempC)}°`;
-    const suffix = weatherData.offline ? " (기본/캐시)" : "";
-    els.weatherCond.textContent = `${cond.text} · ${state.location.name}${suffix}`;
-    els.weatherRange.textContent = `최고 ${Math.round(weatherData.maxTempC)}° · 최저 ${Math.round(weatherData.minTempC)}° · 초미세 ${Math.round(weatherData.pm25)}`;
+    els.weatherEmoji.hidden = !cond;
+    els.weatherEmoji.textContent = cond?.emoji ?? "";
+    els.weatherTemp.hidden = !Number.isFinite(current?.tempC);
+    els.weatherTemp.textContent = els.weatherTemp.hidden ? "" : `${Math.round(current.tempC)}°`;
+    els.weatherCond.textContent = cond?.text ?? (weatherPending ? "날씨 확인 중" : "현재 날씨 미확인");
+    els.weatherSource.hidden = !(available?.cached || (!today && daily));
+    const range = [[daily?.min, "최저"], [daily?.max, "최고"]]
+      .filter(([value]) => Number.isFinite(value)).map(([value, label]) => `${label} ${Math.round(value)}°`);
+    els.weatherRange.hidden = !range.length;
+    els.weatherRange.textContent = range.join(" · ");
+    renderTomorrowWeather(available?.tomorrow, now);
 
-    els.hourlyStrip.replaceChildren();
-    (weatherData.hourly || []).slice(0, 4).forEach((item) => {
-      const cell = document.createElement("div");
-      cell.className = "hourly-cell";
-      const label = document.createElement("span");
-      label.textContent = item.hour;
-      const val = document.createElement("strong");
-      val.textContent = `${Math.round(item.temp)}°`;
-      cell.append(label, val);
-      els.hourlyStrip.appendChild(cell);
-    });
-
-    els.weatherTipBar.textContent = buildWeatherTip(
-      weatherData.tempC,
-      weatherData.minTempC,
-      weatherData.maxTempC,
-      weatherData.precipProb,
-      weatherData.pm25
-    );
+    for (const [index, cell] of [...els.hourlyStrip.children].entries()) {
+      const temp = today?.hourly?.[index];
+      cell.lastElementChild.textContent = Number.isFinite(temp) ? `${Math.round(temp)}°` : "—";
+    }
+    const advice = buildWeatherTip(current?.tempC, daily?.min, daily?.max, today?.precipProb, measured?.pm25);
+    els.weatherTipBar.textContent = advice || (weatherPending ? "날씨 정보를 확인하고 있어요" : "등원 날씨 정보가 부족해요");
   }
 
   function renderProgress() {
@@ -769,8 +851,14 @@ function initDashboardApp() {
     }
 
     const mascotUrl = visibleImage(resolveThemeMascotUrl(state));
-    setMediaSlot(els.headerMascot, mascotUrl, theme.mascotSvg, theme.name);
+    const clockMascotUrl = visibleImage(state.customImages?.[`mascot_${state.theme}`]);
+    setMediaSlot(els.headerMascot, clockMascotUrl, theme.mascotSvg, theme.name);
     setMediaSlot(els.trackMascot, mascotUrl, theme.mascotSvg, theme.name);
+    const progress = `${state.theme}:${state.lastStampedDate}:${doneCount}`;
+    if (progress !== previousProgress && state.theme === "babyshark" && activeIdx !== -1) {
+      els.trackMascot.firstElementChild?.classList.add("swim-forward");
+    }
+    previousProgress = progress;
     setMediaSlot(els.daycareIcon, null, DAYCARE_SVG, state.schoolLabel);
   }
 
@@ -1057,7 +1145,7 @@ function initDashboardApp() {
     els.html.setAttribute("data-theme", state.theme);
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
-      metaTheme.setAttribute("content", state.theme === "pororo" ? "#1e88e5" : "#00acc1");
+      metaTheme.setAttribute("content", state.theme === "pororo" ? "#1e88e5" : "#ffeb3b");
     }
     renderClockAndCountdown();
     renderWeather();
@@ -1065,62 +1153,43 @@ function initDashboardApp() {
     renderCards();
   }
 
-  async function refreshWeather() {
+  function refreshWeather() {
+    if (weatherPending) return weatherPending;
     const { lat, lon } = state.location;
     const forecastUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
       `&current=temperature_2m,weather_code&hourly=temperature_2m,precipitation_probability` +
-      `&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FSeoul&forecast_days=1`;
+      `&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia%2FSeoul&forecast_days=2`;
     const airUrl =
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
       `&current=pm10,pm2_5&timezone=Asia%2FSeoul`;
 
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
-    try {
-      const [wRes, aRes] = await Promise.all([
-        fetch(forecastUrl, { signal: ctrl.signal }),
-        fetch(airUrl, { signal: ctrl.signal }),
-      ]);
-      if (!wRes.ok) throw new Error("Weather fetch failed");
-      const wJson = await wRes.json();
-      const aJson = aRes.ok ? await aRes.json() : {};
-
-      const times = wJson.hourly?.time || [];
-      const temps = wJson.hourly?.temperature_2m || [];
-      const probs = wJson.hourly?.precipitation_probability || [];
-      const targetHours = [9, 12, 15, 18];
-      const hourly = targetHours.map((hr) => {
-        const idx = times.findIndex((iso) => iso.endsWith(`T${String(hr).padStart(2, "0")}:00`));
-        return {
-          hour: `${hr}시`,
-          temp: idx >= 0 ? temps[idx] : wJson.current?.temperature_2m ?? 10,
-        };
-      });
-
-      const morningProbs = probs.slice(7, 19);
-      const maxPrecip = morningProbs.length ? Math.max(...morningProbs) : 0;
-
-      weatherData = {
-        locationId: FIXED_LOCATION.id,
-        tempC: wJson.current?.temperature_2m ?? weatherData.tempC,
-        weatherCode: wJson.current?.weather_code ?? 0,
-        minTempC: wJson.daily?.temperature_2m_min?.[0] ?? weatherData.minTempC,
-        maxTempC: wJson.daily?.temperature_2m_max?.[0] ?? weatherData.maxTempC,
-        pm10: aJson.current?.pm10 ?? 20,
-        pm25: aJson.current?.pm2_5 ?? 10,
-        precipProb: maxPrecip,
-        hourly,
-        offline: false,
-      };
-      localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(weatherData));
-      renderWeather();
-    } catch {
-      weatherData = { ...weatherData, offline: true };
-      renderWeather();
-    } finally {
-      clearTimeout(timer);
+    async function readWeather(url) {
+      const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!response.ok) throw new Error("Weather fetch failed");
+      return response.json();
     }
+
+    const updateForecast = readWeather(forecastUrl).then(payload => {
+      if (!payload || payload.error || !payload.current && !payload.daily && !payload.hourly) {
+        throw new Error("Weather payload missing");
+      }
+      weatherData = { ...forecastSnapshot(payload, Date.now()), locationId: FIXED_LOCATION.id };
+      try { localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(weatherData)); }
+      catch { /* The live forecast remains usable. */ }
+    }, () => { if (weatherData) weatherData.cached = true; });
+    const updateAir = readWeather(airUrl).then(payload => {
+      const current = payload?.current;
+      airData = current ? { measuredAt: seoulMeasurementTime(current.time),
+        pm10: current.pm10, pm25: current.pm2_5 } : null;
+    }, () => { airData = null; });
+    weatherPending = Promise.allSettled([updateForecast, updateAir]).then(([forecast]) => {
+      if (forecast.status === "rejected" && weatherData) weatherData.cached = true;
+      weatherPending = null;
+      renderWeather();
+    });
+    renderWeather();
+    return weatherPending;
   }
 
   async function handleSlotMediaUpload(stepId, stepTitle, files) {
@@ -1248,7 +1317,7 @@ function initDashboardApp() {
     applyFeedbackMotion();
     persistState({
       ...state,
-      childName: (els.inputChildName.value || "채원이").trim().slice(0, 20),
+      childName: els.inputChildName.value,
       schoolLabel: (els.inputSchoolLabel.value || "어린이집").trim().slice(0, 20),
       prepStartTime: els.inputPrepStart.value || state.prepStartTime,
       departureTime: els.inputDepartureTime.value || state.departureTime,
@@ -1337,6 +1406,7 @@ function initDashboardApp() {
       const counts = STEP_IDS.map((stepId) => (themeBuckets[stepId] || []).length);
       const totalItems = counts.reduce((acc, n) => acc + n, 0);
       const rerollableSteps = counts.filter((n) => n >= 2).length;
+      const visibleRerolls = STEP_IDS.some((stepId, idx) => counts[idx] >= 2 && !state.customImages[stepId]);
       const fixedSteps = STEP_IDS.filter((stepId) => Boolean(state.customImages[stepId])).length;
 
       rollStepMediaSelection("manual-reroll");
@@ -1349,6 +1419,8 @@ function initDashboardApp() {
           els.mediaPoolStatus.textContent = `${themeName} 테마에 등록된 행동 그림이 없습니다. 먼저 ZIP이나 파일을 추가해 주세요.`;
         } else if (rerollableSteps === 0) {
           els.mediaPoolStatus.textContent = `${themeName} 테마는 단계별로 1개만 있어 바꿀 다른 그림이 없습니다. (2개 이상 등록 시 랜덤 변경)`;
+        } else if (!visibleRerolls) {
+          els.mediaPoolStatus.textContent = "후보가 있는 단계에 섹션 6 고정 그림이 설정되어 있습니다. 랜덤 그림을 표시하려면 해당 단계의 고정 그림을 초기화해 주세요.";
         } else {
           const fixedNote = fixedSteps > 0 ? ` (섹션 6 고정 그림 ${fixedSteps}개는 유지됨)` : "";
           els.mediaPoolStatus.textContent = `${themeName} 테마 그림을 새로 뽑았습니다.${fixedNote}`;
@@ -1439,7 +1511,35 @@ function initDashboardApp() {
   });
 
   if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+    const worker = navigator.serviceWorker;
+    const release = document.querySelector('meta[name="family-dashboard-release"]')?.content;
+    const updateButton = document.getElementById("shell-update");
+    const boardName = els.html.dataset.suppliesEnabled === "true" ? "가족 보드" : "공개 보드";
+    if (release) document.getElementById("shell-release").textContent = `${boardName} · ${release}`;
+    const showAvailableUpdate = () => {
+      if (!worker.controller || !updateButton) return;
+      const channel = new MessageChannel();
+      const timeout = setTimeout(() => channel.port1.close(), 2000);
+      channel.port1.onmessage = ({ data: installedRelease }) => {
+        clearTimeout(timeout);
+        channel.port1.close();
+        updateButton.hidden = installedRelease === release;
+      };
+      worker.controller.postMessage("family-dashboard-release", [channel.port2]);
+    };
+    worker.addEventListener("controllerchange", showAvailableUpdate);
+    updateButton?.addEventListener("click", () => location.replace(new URL("./", location.href)));
+    const registration = worker.register("./sw.js", { scope: "./", updateViaCache: "none" });
+    registration.then(showAvailableUpdate).catch(() => {});
+    const update = () => {
+      if (document.hidden) return;
+      showAvailableUpdate();
+      registration.then((registered) => registered.update()).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("pageshow", update);
+    window.addEventListener("online", update);
+    setInterval(update, 5 * 60 * 1000);
   }
 
   window.addEventListener("pagehide", () => {
@@ -1474,8 +1574,11 @@ function initDashboardApp() {
   syncFromServerIfEmpty();
   refreshWeather();
   requestWakeLock();
-  setInterval(renderClockAndCountdown, 5000);
+  setInterval(renderClockAndCountdown, 1000);
   setInterval(refreshWeather, 15 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshWeather();
+  });
 }
 
 if (typeof document !== "undefined") {
