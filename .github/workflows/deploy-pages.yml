@@ -47,27 +47,8 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Run full verification suite
         run: python -m pytest tests -q -p no:cacheprovider
-
-  deploy:
-    needs: verify
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    concurrency:
-      group: "pages"
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
       - name: Prepare versioned web bundle
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           python3 - <<'PY'
           import os
@@ -98,9 +79,28 @@ jobs:
               path.write_text(text, encoding="utf-8", newline="\n")
           PY
       - name: Upload web directory artifact
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

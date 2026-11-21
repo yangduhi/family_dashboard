@@ -165,6 +165,11 @@ def test_deploy_workflow_and_sw_cache_contract() -> None:
     assert "version_line.finditer" in workflow
     assert 'text.replace(f"?release={template}", f"?release={release}")' in workflow
     assert 'family-dashboard-release' in workflow
+    # Upload artifact in verify job before deploy job starts to avoid Pages artifact indexing race
+    deploy_job = re.search(r"^\s{2}deploy:\s*$", workflow, flags=re.MULTILINE)
+    assert deploy_job is not None
+    assert workflow.index("actions/upload-pages-artifact@") < deploy_job.start()
+    assert deploy_job.start() < workflow.index("actions/deploy-pages@")
 
 
 def test_server_default_state_file_and_cli_override() -> None:
