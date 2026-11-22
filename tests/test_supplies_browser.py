@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -13,6 +14,30 @@ from playwright.sync_api import expect, sync_playwright
 from app.server import start_server
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def assert_clock_numeral_positions(clock):
+    numbers = clock.locator(".clock-number")
+    assert numbers.all_text_contents() == [str(hour) for hour in range(1, 13)]
+    face = clock.bounding_box()
+    boxes = []
+    for hour, number in enumerate(numbers.all(), start=1):
+        expect(number).to_be_visible()
+        expect(number).to_have_css("rotate", "none")
+        expect(number).to_have_css("transform", "none")
+        box = number.bounding_box()
+        left, top = box["x"], box["y"]
+        right, bottom = left + box["width"], top + box["height"]
+        assert face["x"] <= left < right <= face["x"] + face["width"], hour
+        assert face["y"] <= top < bottom <= face["y"] + face["height"], hour
+        x = (left + box["width"] / 2 - face["x"]) / face["width"] - 0.5
+        y = (top + box["height"] / 2 - face["y"]) / face["height"] - 0.5
+        angle = math.radians(30 * hour)
+        assert abs(x - 0.42 * math.sin(angle)) < 0.02, hour
+        assert abs(y + 0.42 * math.cos(angle)) < 0.02, hour
+        for other_left, other_top, other_right, other_bottom in boxes:
+            assert right < other_left or other_right < left or bottom < other_top or other_bottom < top, hour
+        boxes.append((left, top, right, bottom))
 
 
 def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path):
@@ -47,9 +72,15 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 expect(page.locator("#parent-dialog")).to_be_visible()
                 expect(page.locator("#supplies-details")).to_be_hidden()
                 expect(page.locator("#supplies-login")).to_be_hidden()
+                page.locator('[data-theme-choice="babyshark"]').click()
+                expect(page.locator("html")).to_have_attribute("data-theme", "babyshark")
+                assert_clock_numeral_positions(page.locator("#clock-face"))
+                page.locator('[data-theme-choice="pororo"]').click()
                 page.locator("#input-child-name").fill("사용자 호칭")
                 page.locator("#btn-save-close").click()
                 page.reload()
+                expect(page.locator("html")).to_have_attribute("data-theme", "pororo")
+                assert_clock_numeral_positions(page.locator("#clock-face"))
                 assert page.evaluate("JSON.parse(localStorage.getItem('family_dashboard_state_v1')).childName") == "사용자 호칭"
                 assert private_requests == []
                 ctx.close()
@@ -105,7 +136,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(page.get_by_text("준비물 19", exact=False)).to_be_hidden()
             clock = page.locator("#clock-face")
             expect(clock).to_have_attribute("aria-label", "현재 시각 오전 7:00")
-            assert clock.locator(".clock-number").all_text_contents() == ["12", "3", "6", "9"]
+            assert_clock_numeral_positions(clock)
             assert clock.evaluate("""el => [
                 el.style.getPropertyValue('--hour-angle'),
                 el.style.getPropertyValue('--minute-angle'),
@@ -160,6 +191,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             for width, height in ((1024, 640), (961, 800), (390, 844)):
                 page.set_viewport_size({"width": width, "height": height})
                 face = clock.bounding_box()
+                assert_clock_numeral_positions(clock)
                 assert face["x"] + face["width"] <= button.bounding_box()["x"]
             page.set_viewport_size({"width": 1280, "height": 800})
             screenshot_dir = os.environ.get("FAMILY_SUPPLIES_SCREENSHOT_DIR")
@@ -170,9 +202,10 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(dialog).to_be_visible()
             close = dialog.get_by_role("button", name="닫기")
             expect(close).to_be_focused()
-            expect(dialog.get_by_role("listitem")).to_have_count(20)
-            expect(dialog.get_by_role("listitem").last).to_contain_text("등원하는 날")
-            expect(dialog.get_by_role("listitem").last).to_contain_text(fixture["items"][0]["sourceDate"])
+            today_items = dialog.get_by_role("list", name="오늘 챙길 물품").get_by_role("listitem")
+            expect(today_items).to_have_count(20)
+            expect(today_items.last).to_contain_text("등원하는 날")
+            expect(today_items.last).to_contain_text(fixture["items"][0]["sourceDate"])
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "kidsnote-detail-1280x800.png")
             close.tap()
@@ -208,13 +241,22 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
 
             bulletin = {"status": "VERIFIED", "date": "2026-11-24", "detail": "10시 시작",
                         "sourceDate": "2026-11-20"}
-            response.update(json={**fixture, "items": fixture["items"][:1], "bulletins": [
+            activity = {**bulletin, "kind": "PREPARATION", "title": "체험 활동 준비", "detail": "여벌 옷 지참"}
+            apron = {**activity, "title": "미술 앞치마", "detail": "소매 있는 앞치마",
+                     "date": "2026-11-27", "status": "REVIEW_REQUIRED"}
+            prior = {**activity, "title": "도서 반납", "detail": "빌린 책 지참",
+                     "date": "2026-11-19", "sourceDate": "2026-11-17"}
+            saturday = {**activity, "title": "토요 활동 준비", "date": "2026-11-28"}
+            bulletins = [
                 {**bulletin, "kind": "EVENT", "title": "인형극"},
                 {**bulletin, "kind": "INFORMATION", "title": "출입구 변경", "date": None,
                  "status": "REVIEW_REQUIRED", "detail": "등원 시 정문 이용"},
-                {**bulletin, "kind": "PREPARATION", "title": "체험 활동 준비", "detail": "여벌 옷 지참"},
+                activity, apron, saturday,
+                {**bulletin, "kind": "PREPARATION", "title": "날짜 미정 준비", "date": None, "status": "REVIEW_REQUIRED"},
                 {**bulletin, "kind": "EVENT", "title": "산책", "date": "2026-11-23"},
-            ]})
+            ]
+            response.update(json={**fixture, "items": fixture["items"][:1], "bulletins": bulletins,
+                                  "weekPreparations": [prior, activity, apron, saturday]})
             page.clock.fast_forward(31000)
             expect(status).to_contain_text("전체 1개")
             button.tap()
@@ -223,6 +265,61 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             information = dialog.get_by_role("region", name="특이사항", exact=True)
             expect(dialog.locator("#kidsnote-date")).to_have_attribute("datetime", fixture["targetDate"])
             expect(dialog.get_by_role("status")).to_contain_text("오늘 준비물 1개")
+            week = dialog.locator("#kidsnote-week")
+            grid = week.locator("#week-days")
+            days = grid.locator(":scope > li")
+            review = week.locator("#week-review-list")
+            current_week = week.locator("#week-current")
+            next_week = week.locator("#week-next")
+
+            def expect_week_dates(first_day):
+                expect(days).to_have_count(5)
+                expect(days.locator("time")).to_have_text(
+                    [f"11/{first_day + offset} ({name})" for offset, name in enumerate("월화수목금")]
+                )
+                for offset in range(5):
+                    expect(days.nth(offset).locator("time")).to_have_attribute("datetime", f"2026-11-{first_day + offset}")
+
+            expect(week).to_be_visible()
+            expect(next_week).to_have_attribute("aria-pressed", "true")
+            expect(current_week).to_have_attribute("aria-pressed", "false")
+            expect_week_dates(23)
+            expect(week.locator('[aria-current="date"]')).to_have_count(0)
+            for offset in (0, 2, 3):
+                expect(days.nth(offset)).to_contain_text("등록된 안내 없음")
+            expect(days.nth(4)).to_contain_text("확정된 안내 없음")
+            expect(days.nth(1)).to_contain_text("체험 활동 준비")
+            expect(days.nth(1)).to_contain_text("여벌 옷 지참")
+            expect(days.nth(1)).not_to_contain_text("확인 필요")
+            expect(grid).not_to_contain_text("미술 앞치마")
+            expect(review).to_have_accessible_name("확인할 준비 안내")
+            review_item = review.get_by_role("listitem")
+            expect(review_item).to_have_count(1)
+            for text in ("미술 앞치마", "소매 있는 앞치마", "지참일·조건 확인 필요"):
+                expect(review_item).to_contain_text(text)
+            grid_box = grid.bounding_box()
+            assert grid_box["y"] + grid_box["height"] <= review.bounding_box()["y"]
+            upcoming = preparation.get_by_role("list", name="예정된 준비")
+            for title in ("날짜 미정 준비", "토요 활동 준비"):
+                expect(upcoming).to_contain_text(title)
+                expect(week).not_to_contain_text(title)
+            for title in ("준비물 0", "인형극", "산책", "출입구 변경"):
+                expect(week).not_to_contain_text(title)
+            current_week.tap()
+            expect(current_week).to_have_attribute("aria-pressed", "true")
+            expect(next_week).to_have_attribute("aria-pressed", "false")
+            expect_week_dates(16)
+            expect(days.get_by_text("등록된 안내 없음", exact=True)).to_have_count(4)
+            expect(days.nth(3)).to_contain_text("도서 반납")
+            expect(days.nth(3)).to_contain_text("빌린 책 지참")
+            expect(upcoming).not_to_contain_text("도서 반납")
+            expect(review).to_be_hidden()
+            expect(week).not_to_contain_text("체험 활동 준비")
+            next_week.tap()
+            expect(next_week).to_have_attribute("aria-pressed", "true")
+            expect_week_dates(23)
+            expect(days.nth(1)).to_contain_text("여벌 옷 지참")
+            expect(review_item).to_contain_text("미술 앞치마")
             expect(dialog).to_have_css("font-family", re.compile(r'^"Pretendard Variable",'))
             expect(preparation.get_by_role("heading", name="준비물", exact=True)).to_have_css("font-weight", "700")
             note = information.get_by_text("등원 시 정문 이용")
@@ -235,13 +332,28 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(information.get_by_role("listitem")).to_contain_text("확인 필요")
             expect(information.get_by_role("listitem")).to_contain_text("등원 시 정문 이용")
             assert preparation.bounding_box()["y"] == events.bounding_box()["y"] == information.bounding_box()["y"]
+            boxes = [day.bounding_box() for day in days.all()]
+            assert all(a["y"] == b["y"] and a["x"] + a["width"] <= b["x"] for a, b in zip(boxes, boxes[1:]))
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "kidsnote-categories-landscape.png")
             page.set_viewport_size({"width": 800, "height": 1280})
             assert preparation.bounding_box()["y"] < events.bounding_box()["y"] < information.bounding_box()["y"]
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "kidsnote-categories-portrait.png")
+            response.update(json={**response["json"], "weekPreparations": []})
+            page.clock.fast_forward(31000)
+            expect(days.get_by_text("등록된 안내 없음", exact=True)).to_have_count(5)
+            expect(grid).not_to_contain_text("체험 활동 준비")
+            expect(review.locator("li")).to_have_count(0)
+            expect(upcoming).to_contain_text("체험 활동 준비")
+            expect(upcoming).to_contain_text("미술 앞치마")
+            current_week.tap()
+            expect_week_dates(16)
+            expect(grid).not_to_contain_text("도서 반납")
+            next_week.tap()
             page.set_viewport_size({"width": 390, "height": 500})
+            boxes = [day.bounding_box() for day in days.all()]
+            assert all(a["x"] == b["x"] and a["y"] + a["height"] <= b["y"] for a, b in zip(boxes, boxes[1:]))
             body = dialog.locator(".dialog-body")
             assert body.evaluate("el => el.scrollWidth === el.clientWidth && el.scrollHeight > el.clientHeight")
             box = body.bounding_box()
@@ -296,7 +408,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.keyboard.press("Escape")
             expect(dialog).to_be_hidden()
 
-            response.update(json=fixture)
+            response.update(json={**fixture, "bulletins": [activity, apron]})
             page.clock.fast_forward(31000)
             expect(status).to_contain_text("전체 20개")
             # Same-day failure retains the verified list and its original timestamp.
@@ -307,18 +419,34 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             button.tap()
             expect(dialog).to_be_visible()
             # A family auth failure immediately removes every copy of the items.
+            expect(days.nth(1)).to_contain_text("여벌 옷 지참")
+            expect(review_item).to_contain_text("미술 앞치마")
             response.update(status=401, json={})
             page.clock.fast_forward(31000)
             expect(status).to_have_text("가족 보드 로그인 필요")
+            expect(week).to_be_hidden()
+            expect(days).to_have_count(0)
+            expect(review.locator("li")).to_have_count(0)
             expect(page.locator("#supplies-list li")).to_have_count(0)
             expect(dialog.get_by_role("status")).to_have_text("가족 보드 로그인 필요")
             expect(dialog.get_by_role("link", name="가족 보드 로그인")).to_be_visible()
             expect(page.locator("#supplies-button")).not_to_have_class(re.compile(r"\bhas-items\b"))
             page.keyboard.press("Escape")
 
-            response.update(status=200, json=fixture)
+            monday = "2026-11-23"
+            page.clock.set_system_time(datetime(2026, 11, 22, 22, tzinfo=timezone.utc))
+            response.update(status=200, json={**fixture, "targetDate": monday, "serverNow": "2026-11-22T22:00:00Z",
+                                              "items": [{**fixture["items"][0], "applicableDate": monday, "label": "물통"}]})
             page.clock.fast_forward(31000)
-            expect(status).to_contain_text("전체 20개")
+            expect(status).to_contain_text("전체 1개")
+            button.tap()
+            expect(current_week).to_have_attribute("aria-pressed", "true")
+            expect_week_dates(23)
+            expect(days.locator('[aria-current="date"]')).to_have_attribute("datetime", monday)
+            expect(days.first).to_contain_text("오늘")
+            expect(days.first).to_contain_text("물통 1개")
+            expect(days.first).to_contain_text("등원하는 날")
+            page.keyboard.press("Escape")
             response.update(status=503, json={})
             page.clock.fast_forward(18 * 60 * 60 * 1000)
             expect(status).to_contain_text("연결 후 확인")

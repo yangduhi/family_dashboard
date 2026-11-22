@@ -177,6 +177,7 @@ svg {
   position: relative;
   inline-size: clamp(104px, 17.2dvh, 148px);
   aspect-ratio: 1;
+  container-type: inline-size;
   color: var(--ink-main);
   isolation: isolate;
   overflow: hidden;
@@ -202,15 +203,11 @@ svg {
 .clock-number {
   position: absolute;
   z-index: 1;
-  font-size: clamp(13px, 2dvh, 18px);
+  translate: -50% -50%;
+  font-size: clamp(12px, 12cqi, 18px);
   font-weight: 700;
   line-height: 1;
 }
-
-.clock-number-top { inset-block-start: 7%; inset-inline-start: 50%; translate: -50% 0; }
-.clock-number-bottom { inset-block-end: 7%; inset-inline-start: 50%; translate: -50% 0; }
-.clock-number-left { inset-inline-start: 9%; inset-block-start: 50%; translate: 0 -50%; }
-.clock-number-right { inset-inline-end: 9%; inset-block-start: 50%; translate: 0 -50%; }
 
 .clock-hand {
   position: absolute;
@@ -1274,6 +1271,78 @@ dialog:is(.parent-dialog, .supplies-dialog)::backdrop {
 .kidsnote-status strong { font-size: 1.0625rem; }
 
 .kidsnote-status p { margin: 4px 0 0; font-size: 0.9375rem; }
+
+.kidsnote-week {
+  background: var(--weather-card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+.week-toolbar, .week-switch, #week-days > li > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.week-toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.week-toolbar h3, .week-toolbar p { margin: 0; }
+.week-toolbar h3 { font-size: 1.125rem; }
+.week-toolbar p { color: var(--ink-muted); font-size: .875rem; font-variant-numeric: tabular-nums; }
+.week-switch {
+  padding: 2px;
+  gap: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+.week-switch button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  color: var(--ink-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.week-switch button[aria-pressed="true"] { background: var(--ink-main); color: white; font-weight: 700; }
+.week-switch button:focus-visible { outline: 2px solid var(--ink-main); outline-offset: 2px; }
+#week-days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+#week-days > li {
+  background: color-mix(in srgb, var(--weather-card-bg) 45%, white);
+  border-block-start: 3px solid var(--card-border);
+  border-radius: 0 0 8px 8px;
+  padding: 8px 10px 12px;
+  min-width: 0;
+}
+#week-days > .week-has-supplies { border-color: var(--ink-muted); background: white; }
+#week-days > li:has([aria-current="date"]) { border-color: var(--ink-main); }
+#week-days > li > div { flex-wrap: wrap; margin-bottom: 6px; }
+#week-days time { font-size: .9375rem; font-weight: 700; }
+#week-days strong, #week-days small { display: block; white-space: pre-line; }
+#week-days small { color: var(--ink-muted); font-size: .875rem; }
+#week-days strong:not(:first-of-type) { margin-top: 8px; }
+.week-today { color: var(--ink-main); background: var(--card-bg); border-radius: 6px; padding: 0 5px; font-size: .8125rem; }
+#week-review { margin-block-start: 12px; border-block-start: 1px solid var(--card-border); }
+#week-review h4 { margin: 10px 0 0; }
+@media (max-width: 640px) {
+  #week-days { grid-template-columns: 1fr; gap: 3px; }
+  #week-days > li {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    column-gap: 10px;
+    border-block-start: none;
+    border-inline-start: 3px solid var(--card-border);
+    padding: 8px;
+  }
+  #week-days > li > div { grid-column: 1; grid-row: 1; align-self: start; margin: 0; }
+  #week-days > li > :not(div) { grid-column: 2; }
+}
 
 .kidsnote-login:not([hidden]) {
   display: inline-flex;

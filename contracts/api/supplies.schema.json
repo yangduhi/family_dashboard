@@ -121,6 +121,15 @@
         "additionalProperties": false
       }
     },
+    "weekPreparations": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/properties/bulletins/items" },
+          { "properties": { "kind": { "const": "PREPARATION" }, "date": { "type": "string" } } }
+        ]
+      }
+    },
     "guardianConfirmation": {
       "type": "object",
       "required": [
