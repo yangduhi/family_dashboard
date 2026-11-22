@@ -61,6 +61,9 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 page.wait_for_function("navigator.serviceWorker.controller !== null")
                 expect(page.locator("#cards-grid .step-card")).to_have_count(4)
                 expect(page.locator("#supplies-button")).to_be_hidden()
+                expect(page.locator("#calendar-button")).to_be_hidden()
+                expect(page.locator("#calendar-dialog")).to_be_hidden()
+                expect(page.locator("#calendar-days > li")).to_have_count(0)
                 expect(page.locator("#supplies-dialog")).not_to_be_visible()
                 assert page.locator("html").get_attribute("data-supplies-enabled") != "true"
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -93,6 +96,17 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
 
 def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path):
     fixture = json.loads((ROOT / "tests/fixtures/supplies-today.json").read_text(encoding="utf-8"))
+    fixture["monthlyCalendar"] = {"month": "2026-11", "status": "AVAILABLE", "events": [
+        {"date": "2026-11-03", "title": "낙엽 놀이", "audience": "AGE_ONE", "time": "10:00"},
+        {"date": "2026-11-03", "title": "동화 산책", "audience": "INCLUDES_ONE"},
+        {"date": "2026-11-12", "title": "가족 음악회", "audience": "SHARED"},
+        {"date": "2026-11-20", "title": "숲 체험", "audience": "OTHER"},
+        {"date": "2026-11-26", "title": "은빛반 미술 활동", "audience": "UNCONFIRMED"},
+    ]}
+    museum = {"date": "2026-12-07", "title": "박물관 견학", "audience": "UNCONFIRMED"}
+    competition = {"date": "2026-12-11", "title": "체육 대회", "audience": "UNCONFIRMED", "time": "10:00"}
+    december = {"month": "2026-12", "status": "AVAILABLE", "events": [museum, competition]}
+    fixture["nextMonthlyCalendar"] = december
     fixture["items"] = [
         {**fixture["items"][0], "label": f"준비물 {i} " + "긴 한글 이름 " * 8, "condition": "등원하는 날"}
         for i in range(20)
@@ -129,6 +143,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             status = page.locator("#supplies-status")
             button = page.get_by_role("button", name="키즈노트", exact=True)
             dialog = page.get_by_role("dialog", name="키즈노트", exact=True)
+            calendar_button = dialog.get_by_role("button", name="월간 일정표", exact=True)
+            calendar = page.get_by_role("dialog", name="월간 일정표", exact=True)
             expect(status).to_contain_text("전체 20개")
             expect(button).to_be_enabled()
             expect(button).to_have_accessible_description("오늘 표시할 준비물이 있습니다. 상세 내용을 확인해 주세요.")
@@ -181,6 +197,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             assert sizes["weather"]["right"] <= sizes["lock"]["left"]
             assert sizes["lock"]["left"] - sizes["weather"]["right"] <= 18
             assert page.locator(".header-actions > #parent-lock-btn + #supplies-button").count() == 1
+            expect(page.locator(".header-actions button")).to_have_count(2)
+            expect(page.locator(".header-actions #calendar-button")).to_have_count(0)
             assert page.locator(".weather-zone").evaluate("el => getComputedStyle(el).paddingInlineStart === getComputedStyle(el).paddingInlineEnd")
             expect(page.locator(".weather-zone")).to_have_css("border-top-width", "1px")
             assert sizes["button"]["height"] >= 44
@@ -193,11 +211,147 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                 face = clock.bounding_box()
                 assert_clock_numeral_positions(clock)
                 assert face["x"] + face["width"] <= button.bounding_box()["x"]
+                expect(page.locator("#calendar-button")).to_be_hidden()
             page.set_viewport_size({"width": 1280, "height": 800})
             screenshot_dir = os.environ.get("FAMILY_SUPPLIES_SCREENSHOT_DIR")
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "kidsnote-active-1280x800.png")
 
+            button.tap()
+            expect(calendar_button).to_have_text("월간 일정표")
+            expect(calendar_button.locator("svg")).to_be_visible()
+            page.set_viewport_size({"width": 390, "height": 844})
+            icon = calendar_button.bounding_box()
+            assert icon["width"] >= 44 and icon["height"] >= 44 and icon["x"] + icon["width"] <= 390
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "kidsnote-detail-390x844.png")
+            dialog.locator("#week-current").tap()
+            detail_body = dialog.locator(".dialog-body")
+            scroll_top = detail_body.evaluate("el => { el.scrollTop = 120; return el.scrollTop; }")
+            assert scroll_top > 0
+            calendar_button.tap()
+            expect(calendar).to_be_visible()
+            page.keyboard.press("Escape")
+            expect(calendar).to_be_hidden()
+            expect(calendar_button).to_be_focused()
+            expect(dialog.locator("#week-current")).to_have_attribute("aria-pressed", "true")
+            assert detail_body.evaluate("el => el.scrollTop") == scroll_top
+            page.keyboard.press("Escape")
+            expect(dialog).to_be_hidden()
+            expect(button).to_be_focused()
+            page.set_viewport_size({"width": 1280, "height": 800})
+            button.tap()
+            dialog.locator("#week-next").tap()
+            calendar_button.tap()
+            expect(calendar).to_be_visible()
+            expect(calendar.get_by_role("button", name="닫기")).to_be_focused()
+            november_button = calendar.get_by_role("button", name="2026년 11월")
+            december_button = calendar.get_by_role("button", name="2026년 12월")
+            expect(november_button).to_have_attribute("aria-pressed", "true")
+            calendar_days = calendar.locator("#calendar-days > li")
+            expect(calendar_days).to_have_count(30)
+            expect(calendar.locator(".calendar-weekdays span")).to_have_text(list("일월화수목금토"))
+            labels = ["만 1세 전용", "만 1세 포함", "전체 공통", "다른 연령", "대상 미확인"]
+            for event, label in zip(fixture["monthlyCalendar"]["events"], labels):
+                day = calendar_days.filter(has=page.locator(f'time[datetime="{event["date"]}"]'))
+                entry = day.locator(".calendar-event").filter(has_text=event["title"])
+                expect(entry.locator(".calendar-audience")).to_have_text(label)
+                if "time" in event:
+                    expect(entry.locator("time")).to_have_text(event["time"])
+                else:
+                    expect(entry.locator("time")).to_have_count(0)
+            colors = calendar.locator(".calendar-event").evaluate_all("rows => rows.map(r => getComputedStyle(r).backgroundColor)")
+            assert len(set(colors[:3])) == 3
+            assert calendar_days.nth(2).bounding_box()["y"] == calendar_days.nth(6).bounding_box()["y"]
+            assert calendar_days.nth(7).bounding_box()["y"] > calendar_days.first.bounding_box()["y"]
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "calendar-1280x800.png")
+            page.set_viewport_size({"width": 390, "height": 844})
+            expect(calendar.locator(".calendar-day-long:visible")).to_have_text(
+                ["11월 3일 화요일", "11월 12일 목요일", "11월 20일 금요일", "11월 26일 목요일"])
+            assert calendar.locator(".dialog-body").evaluate("el => el.scrollWidth === el.clientWidth")
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "calendar-390x844.png")
+            december_button.tap()
+            expect(december_button).to_have_attribute("aria-pressed", "true")
+            expect(calendar.locator(".calendar-day-long:visible")).to_have_text(["12월 7일 월요일", "12월 11일 금요일"])
+            expect(calendar_days.nth(6)).to_contain_text("박물관 견학")
+            expect(calendar_days.nth(10)).to_contain_text("체육 대회")
+            expect(calendar_days.nth(10).locator(".calendar-audience")).to_have_text("대상 미확인")
+            expect(calendar_days.nth(10).locator(".calendar-event time")).to_have_text("10:00")
+            expect(calendar).not_to_contain_text("낙엽 놀이")
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "calendar-december-390x844.png")
+            page.set_viewport_size({"width": 1280, "height": 800})
+            expect(calendar_days).to_have_count(31)
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "calendar-december-1280x800.png")
+
+            for snapshot, message in [
+                (None, "월간 일정표 미확인"),
+                ({"month": "2026-12", "status": "PENDING", "events": []}, "월간 일정표 갱신 대기"),
+                (fixture["monthlyCalendar"], "월간 일정표 미확인"),
+            ]:
+                payload = {key: value for key, value in fixture.items() if key != "nextMonthlyCalendar"}
+                if snapshot is not None:
+                    payload["nextMonthlyCalendar"] = snapshot
+                response.update(json=payload)
+                page.clock.fast_forward(31000)
+                expect(december_button).to_have_attribute("aria-pressed", "true")
+                expect(calendar.get_by_role("status")).to_have_text(message)
+                expect(calendar_days).to_have_count(0)
+                november_button.tap()
+                expect(calendar).to_contain_text("낙엽 놀이")
+                december_button.tap()
+            untimed = {key: value for key, value in competition.items() if key != "time"}
+            response.update(json={**fixture, "nextMonthlyCalendar": {**december, "events": [museum, untimed]}})
+            page.clock.fast_forward(31000)
+            expect(calendar_days.nth(10)).to_contain_text("체육 대회")
+            expect(calendar_days.nth(10).locator(".calendar-event time")).to_have_count(0)
+            response.update(json=fixture)
+            page.clock.fast_forward(31000)
+            expect(calendar_days.nth(10).locator(".calendar-event time")).to_have_text("10:00")
+            page.keyboard.press("Escape")
+            expect(calendar_button).to_be_focused()
+            page.set_viewport_size({"width": 1280, "height": 800})
+            calendar_button.press("Enter")
+            calendar.get_by_role("button", name="닫기").press("Enter")
+            expect(calendar_button).to_be_focused()
+
+            calendar_button.tap()
+            response.update(json={**fixture, "monthlyCalendar": {**fixture["monthlyCalendar"], "status": "NEEDS_REVIEW"}})
+            page.clock.fast_forward(31000)
+            expect(calendar.get_by_role("status")).to_have_text("일정표 확인 필요")
+            expect(calendar.locator(".calendar-event")).to_have_count(5)
+            response.update(json={**fixture, "monthlyCalendar": {"month": "2026-11", "status": "PENDING", "events": []}})
+            page.clock.fast_forward(31000)
+            expect(calendar.get_by_role("status")).to_have_text("월간 일정표 갱신 대기")
+            expect(calendar_days).to_have_count(0)
+            response.update(json={key: value for key, value in fixture.items() if key != "monthlyCalendar"})
+            page.clock.fast_forward(31000)
+            expect(calendar.get_by_role("status")).to_have_text("월간 일정표 미확인")
+
+            for invalid in (
+                {"rawText": "비공개 원문"},
+                {"month": "2026-12"},
+                {"status": "PENDING"},
+                {"events": [{**fixture["monthlyCalendar"]["events"][0], "time": "24:00"}]},
+                {"events": [{**fixture["monthlyCalendar"]["events"][0], "rawText": "비공개 원문"}]},
+            ):
+                response.update(json={**fixture, "monthlyCalendar": {**fixture["monthlyCalendar"], **invalid}})
+                with page.expect_response(endpoint):
+                    page.clock.fast_forward(31000)
+                expect(calendar.get_by_role("status")).to_have_text("월간 일정표 미확인")
+                expect(calendar_days).to_have_count(0)
+                expect(page.locator("#supplies-list li")).to_have_count(20)
+            december_button.tap()
+            expect(calendar_days.nth(10)).to_contain_text("10:00")
+            page.keyboard.press("Escape")
+            expect(calendar_button).to_be_focused()
+            page.keyboard.press("Escape")
+            expect(button).to_be_focused()
+            response.update(json=fixture)
+            page.clock.fast_forward(31000)
             button.tap()
             expect(dialog).to_be_visible()
             close = dialog.get_by_role("button", name="닫기")
@@ -421,9 +575,16 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             # A family auth failure immediately removes every copy of the items.
             expect(days.nth(1)).to_contain_text("여벌 옷 지참")
             expect(review_item).to_contain_text("미술 앞치마")
+            calendar_button.tap()
+            expect(calendar).to_contain_text("낙엽 놀이")
             response.update(status=401, json={})
             page.clock.fast_forward(31000)
             expect(status).to_have_text("가족 보드 로그인 필요")
+            expect(page.locator("#calendar-button")).to_be_hidden()
+            expect(page.locator("#calendar-days > li")).to_have_count(0)
+            expect(calendar.get_by_role("status")).to_have_text("가족 보드 로그인 필요")
+            page.keyboard.press("Escape")
+            expect(close).to_be_focused()
             expect(week).to_be_hidden()
             expect(days).to_have_count(0)
             expect(review.locator("li")).to_have_count(0)
@@ -446,10 +607,18 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(days.first).to_contain_text("오늘")
             expect(days.first).to_contain_text("물통 1개")
             expect(days.first).to_contain_text("등원하는 날")
-            page.keyboard.press("Escape")
+            calendar_button.tap()
+            expect(calendar).to_contain_text("낙엽 놀이")
             response.update(status=503, json={})
             page.clock.fast_forward(18 * 60 * 60 * 1000)
             expect(status).to_contain_text("연결 후 확인")
+            expect(calendar.get_by_role("status")).to_contain_text("연결 후 확인")
+            expect(calendar_days).to_have_count(0)
+            page.keyboard.press("Escape")
+            expect(close).to_be_focused()
+            expect(dialog.get_by_role("status")).to_contain_text("연결 후 확인")
+            page.keyboard.press("Escape")
+            expect(button).to_be_focused()
             expect(page.locator("#supplies-list li")).to_have_count(0)
             expect(button).not_to_have_class(re.compile(r"\bhas-items\b"))
             keys = page.evaluate("""async () => {
@@ -482,6 +651,26 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(button).to_be_visible()
             expect(button).to_be_enabled()
             expect(button).not_to_have_class(re.compile(r"\bhas-items\b"))
+
+            # A December KST target exposes January of the next year even when the current month is absent.
+            ctx.unroute(endpoint)
+            year_end = {**fixture, "targetDate": "2026-12-31", "serverNow": "2026-12-30T15:01:00Z",
+                        "items": [], "state": "EMPTY", "nextMonthlyCalendar": {
+                            "month": "2027-01", "status": "AVAILABLE",
+                            "events": [{"date": "2027-01-04", "title": "새해 놀이", "audience": "SHARED"}]}}
+            del year_end["monthlyCalendar"]
+            ctx.route(endpoint, lambda route: route.fulfill(json=year_end))
+            page.clock.set_system_time(datetime(2026, 12, 30, 15, 1, tzinfo=timezone.utc))
+            page.clock.fast_forward(31000)
+            button.tap()
+            calendar_button.tap()
+            expect(december_button).to_have_attribute("aria-pressed", "true")
+            calendar.get_by_role("button", name="2027년 1월").tap()
+            expect(calendar_days.nth(3)).to_contain_text("새해 놀이")
+            page.keyboard.press("Escape")
+            expect(calendar_button).to_be_focused()
+            page.keyboard.press("Escape")
+            expect(button).to_be_focused()
 
             # A response initiated before midnight cannot put yesterday's list back on screen.
             ctx.unroute(endpoint)

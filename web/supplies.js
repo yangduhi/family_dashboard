@@ -11,6 +11,28 @@ const date = (value) => {
 };
 const stamp = (value) => typeof value === "string" && /T.*(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value));
 const nullableText = (value) => value === null || typeof value === "string";
+const calendarAudiences = {
+  AGE_ONE: "만 1세 전용", INCLUDES_ONE: "만 1세 포함", SHARED: "전체 공통", OTHER: "다른 연령", UNCONFIRMED: "대상 미확인",
+};
+const hasOnlyKeys = (value, keys) => value !== null && typeof value === "object" && !Array.isArray(value) &&
+  Object.keys(value).every(key => keys.includes(key));
+
+function calendarMonthFor(targetDate, offset) {
+  const day = new Date(targetDate.slice(0, 7) + "-01T00:00:00Z");
+  day.setUTCMonth(day.getUTCMonth() + offset);
+  return day.toISOString().slice(0, 7);
+}
+
+export function validateMonthlyCalendar(calendar, targetDate, monthOffset = 0) {
+  if (!date(targetDate) || ![0, 1].includes(monthOffset) || !hasOnlyKeys(calendar, ["month", "status", "events"]) ||
+      calendar.month !== calendarMonthFor(targetDate, monthOffset) || !["AVAILABLE", "NEEDS_REVIEW", "PENDING"].includes(calendar.status) ||
+      !Array.isArray(calendar.events) || (calendar.status === "PENDING" && calendar.events.length)) return false;
+  return calendar.events.every(row => hasOnlyKeys(row, ["date", "title", "audience", "time"]) &&
+    date(row.date) && row.date.startsWith(calendar.month + "-") &&
+    typeof row.title === "string" && row.title.trim().length > 0 && [...row.title].length <= 160 &&
+    typeof row.audience === "string" && Object.hasOwn(calendarAudiences, row.audience) &&
+    (!Object.hasOwn(row, "time") || (typeof row.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(row.time))));
+}
 const bulletinStatuses = { VERIFIED: "확인됨", REVIEW_REQUIRED: "확인 필요" };
 const bulletinLists = {
   PREPARATION: "kidsnote-upcoming-list",
@@ -162,7 +184,15 @@ function start() {
   const weekDays = document.getElementById("week-days");
   const currentWeek = document.getElementById("week-current");
   const nextWeek = document.getElementById("week-next");
+  const calendarButton = document.getElementById("calendar-button");
+  const calendarDialog = document.getElementById("calendar-dialog");
+  const calendarMonths = document.getElementById("calendar-months");
+  const monthButtons = [document.getElementById("calendar-current"), document.getElementById("calendar-next")];
+  const calendarStatus = document.getElementById("calendar-status");
+  const calendarContent = document.getElementById("calendar-content");
+  const calendarDays = document.getElementById("calendar-days");
   let showNextWeek = false;
+  let monthOffset = 0;
   let current = null;
   let mode = "checking";
   let pending;
@@ -196,9 +226,67 @@ function start() {
     });
   }
 
+  function renderCalendar(data) {
+    const calendar = monthOffset === 0 ? data?.monthlyCalendar : data?.nextMonthlyCalendar;
+    calendarButton.hidden = !data;
+    calendarDays.replaceChildren();
+    calendarContent.hidden = !calendar || calendar.status === "PENDING";
+    calendarMonths.hidden = !data;
+    monthButtons.forEach((control, offset) => {
+      control.textContent = "";
+      if (data) {
+        const [year, month] = calendarMonthFor(data.targetDate, offset).split("-");
+        control.textContent = year + "년 " + Number(month) + "월";
+      }
+      control.setAttribute("aria-pressed", String(offset === monthOffset));
+    });
+    let message = "월간 일정표 미확인";
+    if (!data) message = labelFor(null, mode);
+    if (calendar) {
+      message = { AVAILABLE: "", NEEDS_REVIEW: "일정표 확인 필요", PENDING: "월간 일정표 갱신 대기" }[calendar.status];
+      if (calendar.status === "AVAILABLE" && !calendar.events.length) message = "등록된 행사 없음";
+      if (mode === "stale") message = [message, "갱신 실패"].filter(Boolean).join(" · ");
+    }
+    calendarStatus.hidden = !message;
+    calendarStatus.textContent = message;
+    if (calendarContent.hidden) return;
+    const day = new Date(calendar.month + "-01T00:00:00Z");
+    const monthIndex = day.getUTCMonth();
+    const byDate = new Map();
+    for (const event of calendar.events) {
+      if (!byDate.has(event.date)) byDate.set(event.date, []);
+      byDate.get(event.date).push(event);
+    }
+    while (day.getUTCMonth() === monthIndex) {
+      const value = day.toISOString().slice(0, 10);
+      const cell = document.createElement("li");
+      if (day.getUTCDate() === 1) cell.style.gridColumnStart = String(day.getUTCDay() + 1);
+      const time = textElement("time", "", "calendar-date");
+      time.dateTime = value;
+      time.setAttribute("aria-label", fullDate.format(day));
+      time.append(textElement("span", String(day.getUTCDate()), "calendar-day-number"),
+        textElement("span", Number(calendar.month.slice(5)) + "월 " + day.getUTCDate() + "일 " + weekday.format(day) + "요일",
+          "calendar-day-long"));
+      if (value === data.targetDate) time.setAttribute("aria-current", "date");
+      cell.append(time);
+      for (const event of byDate.get(value) ?? []) {
+        const row = document.createElement("div");
+        row.className = "calendar-event";
+        row.dataset.audience = event.audience;
+        row.append(textElement("span", calendarAudiences[event.audience], "calendar-audience"),
+          textElement("strong", event.title));
+        if (event.time) row.append(textElement("time", event.time));
+        cell.append(row);
+      }
+      calendarDays.append(cell);
+      day.setUTCDate(day.getUTCDate() + 1);
+    }
+  }
+
   function render() {
     const data = current;
     renderWeek(data);
+    renderCalendar(data);
     login.hidden = dialogLogin.hidden = mode !== "auth";
     const items = data?.items ?? [];
     const bulletins = data?.bulletins ?? [];
@@ -321,6 +409,8 @@ function start() {
         if (duration < 0 || kst.format(new Date(serverTime)) !== data.targetDate) return update(null, "connect");
         observedServerTime = serverTime;
         observedClientTime = receivedAt;
+        if (!validateMonthlyCalendar(data.monthlyCalendar, data.targetDate)) delete data.monthlyCalendar;
+        if (!validateMonthlyCalendar(data.nextMonthlyCalendar, data.targetDate, 1)) delete data.nextMonthlyCalendar;
         update(data, "result");
       }
     } catch {
@@ -341,6 +431,24 @@ function start() {
   button.addEventListener("click", () => {
     expireDate();
     dialog.showModal();
+  });
+  calendarButton.addEventListener("click", () => {
+    expireDate();
+    if (current && dialog.open) {
+      monthOffset = 0;
+      renderCalendar(current);
+      calendarDialog.showModal();
+    }
+  });
+  monthButtons.forEach((control, offset) => control.addEventListener("click", () => {
+    expireDate();
+    monthOffset = offset;
+    renderCalendar(current);
+  }));
+  calendarDialog.addEventListener("close", () => {
+    if (dialog.open && !calendarDialog.open) {
+      (calendarButton.hidden ? dialog.querySelector(".dialog-close-btn") : calendarButton).focus({ preventScroll: true });
+    }
   });
   render();
   function suspend() {

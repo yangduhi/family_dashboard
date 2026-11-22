@@ -13,6 +13,16 @@ def test_supplies_schema_and_browser_consumer_contract():
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     validator.validate(fixture)
+    event = {"date": fixture["targetDate"], "title": "음악 놀이", "audience": "INCLUDES_ONE", "time": "10:00"}
+    calendar = {"month": fixture["targetDate"][:7], "status": "AVAILABLE", "events": [event]}
+    validator.validate({**fixture, "monthlyCalendar": calendar})
+    for invalid in (
+        {**calendar, "month": "2026-13"}, {**calendar, "status": "PENDING"},
+        {**calendar, "events": [{**event, "audience": "UNKNOWN_AGE"}]},
+        {**calendar, "events": [{**event, "time": "24:00"}]},
+        {**calendar, "events": [{**event, "rawText": "원문"}]},
+    ):
+        assert not validator.is_valid({**fixture, "monthlyCalendar": invalid})
     notice = {"date": "2026-11-20", "sourceDate": "2026-11-19", "kind": "PREPARATION",
               "status": "VERIFIED", "title": "여벌 옷", "detail": ""}
     validator.validate({**fixture, "weekPreparations": [notice]})

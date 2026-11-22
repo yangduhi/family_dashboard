@@ -1,9 +1,25 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { schoolWeek, validateSupplies } from "../web/supplies.js";
+import { schoolWeek, validateMonthlyCalendar, validateSupplies } from "../web/supplies.js";
 
 const ready = JSON.parse(readFileSync(new URL("fixtures/supplies-today.json", import.meta.url)));
+
+test("calendar validation binds every event to the displayed Seoul month", () => {
+  const day = "2028-02-01";
+  const event = { date: "2028-02-29", title: "음악 놀이", audience: "AGE_ONE" };
+  const calendar = { month: "2028-02", status: "AVAILABLE", events: [event] };
+  for (const audience of ["AGE_ONE", "INCLUDES_ONE", "SHARED", "OTHER", "UNCONFIRMED"]) {
+    assert.ok(validateMonthlyCalendar({ ...calendar, events: [{ ...event, audience, time: "10:00" }] }, day));
+  }
+  for (const change of [{ date: "2028-03-01" }, { date: "2028-02-30" }, { time: "24:00" },
+    { audience: "ALL" }, { rawText: "test" }]) {
+    assert.equal(validateMonthlyCalendar({ ...calendar, events: [{ ...event, ...change }] }, day), false);
+  }
+  assert.equal(validateMonthlyCalendar(calendar, "2028-03-01"), false);
+  assert.equal(validateMonthlyCalendar({ ...calendar, status: "PENDING" }, day), false);
+  assert.ok(validateMonthlyCalendar({ ...calendar, status: "PENDING", events: [] }, day));
+});
 
 test("Seoul school weeks span Monday to Friday across the year boundary", () => {
   const week = ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01"];

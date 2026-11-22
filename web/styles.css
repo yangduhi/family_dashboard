@@ -1261,6 +1261,80 @@ dialog:is(.parent-dialog, .supplies-dialog)::backdrop {
 
 .kidsnote-date, .kidsnote-source { font-size: 0.875rem; }
 
+#supplies-dialog .dialog-head { flex-wrap: wrap; gap: 8px; }
+.kidsnote-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+#calendar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink-main);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+#calendar-button[hidden] { display: none; }
+#calendar-button:focus-visible { outline: 2px solid var(--ink-main); outline-offset: 3px; }
+#calendar-months { width: fit-content; margin-top: 6px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+#calendar-months[hidden] { display: none; }
+#calendar-status { margin: 0; }
+.calendar-weekdays, #calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.calendar-weekdays {
+  margin-bottom: 6px;
+  padding-inline: 1px;
+  text-align: center;
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+#calendar-days { margin: 0; padding: 0; list-style: none; }
+#calendar-days > li {
+  min-width: 0;
+  min-height: 54px;
+  padding: 5px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: white;
+}
+.calendar-date { display: block; font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-day-number { display: inline-block; min-width: 1.65em; text-align: center; }
+.calendar-date[aria-current="date"] .calendar-day-number {
+  border-radius: 50%;
+  background: var(--ink-main);
+  color: white;
+}
+.calendar-day-long { display: none; }
+.calendar-event {
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-inline-start: 3px solid var(--card-border);
+  border-radius: 4px;
+  font-size: .875rem;
+  line-height: 1.35;
+  background: var(--weather-card-bg);
+}
+.calendar-event strong, .calendar-event time { display: block; }
+.calendar-event time, .calendar-audience { font-size: .8125rem; }
+.calendar-event[data-audience="AGE_ONE"] { background: #19574e; color: white; border-color: #19574e; }
+.calendar-event[data-audience="INCLUDES_ONE"] { background: #dff2ea; border-color: #257362; color: #16483f; }
+.calendar-event[data-audience="OTHER"] { background: #f1f2f3; border-color: #707981; }
+.calendar-event[data-audience="UNCONFIRMED"] { border: 1px dashed var(--ink-muted); background: white; }
+@media (max-width: 640px) {
+  .calendar-weekdays, .calendar-day-number, #calendar-days > li:not(:has(.calendar-event)) { display: none; }
+  #calendar-days { display: flex; flex-direction: column; gap: 12px; }
+  #calendar-days > li { padding: 0; border: 0; background: transparent; }
+  .calendar-day-long { display: inline; }
+  .calendar-event { padding: 7px 10px; font-size: 1rem; }
+}
+
 .kidsnote-status {
   padding: 12px 16px;
   background: var(--weather-card-bg);
