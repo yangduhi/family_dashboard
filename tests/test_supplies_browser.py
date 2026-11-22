@@ -225,7 +225,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             assert icon["width"] >= 44 and icon["height"] >= 44 and icon["x"] + icon["width"] <= 390
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "kidsnote-detail-390x844.png")
-            dialog.locator("#week-current").tap()
+            week_dates = dialog.locator("#week-days > li time")
+            visible_dates = week_dates.all_text_contents()
             detail_body = dialog.locator(".dialog-body")
             scroll_top = detail_body.evaluate("el => { el.scrollTop = 120; return el.scrollTop; }")
             assert scroll_top > 0
@@ -234,14 +235,13 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.keyboard.press("Escape")
             expect(calendar).to_be_hidden()
             expect(calendar_button).to_be_focused()
-            expect(dialog.locator("#week-current")).to_have_attribute("aria-pressed", "true")
+            expect(week_dates).to_have_text(visible_dates)
             assert detail_body.evaluate("el => el.scrollTop") == scroll_top
             page.keyboard.press("Escape")
             expect(dialog).to_be_hidden()
             expect(button).to_be_focused()
             page.set_viewport_size({"width": 1280, "height": 800})
             button.tap()
-            dialog.locator("#week-next").tap()
             calendar_button.tap()
             expect(calendar).to_be_visible()
             expect(calendar.get_by_role("button", name="닫기")).to_be_focused()
@@ -266,6 +266,63 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             assert calendar_days.nth(7).bounding_box()["y"] > calendar_days.first.bounding_box()["y"]
             if screenshot_dir:
                 page.screenshot(path=Path(screenshot_dir) / "calendar-1280x800.png")
+            dense_events = [
+                {"date": "2026-11-03", "title": f"가을 미술 활동 {i + 1} · 나뭇잎으로 우리 동네 꾸미기",
+                 "audience": "INCLUDES_ONE", "time": f"10:{i:02d}"} for i in range(12)
+            ]
+            dense_events[-1].update(ageOneParticipation="CONFIRMED", preparations=[{"label": "어린이 위생장갑"}])
+            response.update(json={**fixture, "monthlyCalendar": {**fixture["monthlyCalendar"],
+                                  "events": [*fixture["monthlyCalendar"]["events"], *dense_events]}})
+            page.clock.fast_forward(31000)
+            agenda = calendar.get_by_role("list", name="2026년 11월 3일 화요일 행사 14개")
+            expect(agenda.locator(":scope > li")).to_have_count(14)
+            audit = []
+            for width, height, scale in [(1280, 800, 100), (1024, 640, 200), (390, 844, 200)]:
+                page.set_viewport_size({"width": width, "height": height})
+                page.evaluate("scale => document.documentElement.style.fontSize = scale + '%'", scale)
+                bounds = calendar.evaluate("""dialog => {
+                    const cells = [...dialog.querySelectorAll('#calendar-days > li')].filter(el => el.clientHeight);
+                    const lists = cells.flatMap(el => [...el.querySelectorAll('.calendar-events')]);
+                    const heights = cells.map(el => el.getBoundingClientRect().height);
+                    return {minHeight: Math.min(...heights), maxHeight: Math.max(...heights),
+                      maxOverflowX: Math.max(...[dialog, dialog.querySelector('.dialog-body'), ...cells, ...lists]
+                        .map(el => el.scrollWidth - el.clientWidth))};
+                }""")
+                audit.append({"width": width, "height": height, "fontPercent": scale, **bounds})
+                assert bounds["maxOverflowX"] <= 1, bounds
+                if width > 640:
+                    assert bounds["maxHeight"] - bounds["minHeight"] <= 1, bounds
+                    calendar.get_by_role("button", name="닫기").focus()
+                    page.keyboard.press("Tab")
+                    expect(agenda).to_be_focused()
+                    assert agenda.evaluate("el => el.scrollHeight > el.clientHeight")
+                    agenda.press("End")
+                    page.wait_for_function("""() => {
+                      const el = document.activeElement;
+                      return el.scrollTop > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+                    }""")
+                    page.clock.fast_forward(31000)
+                    expect(agenda).to_be_focused()
+                    last = agenda.locator(".calendar-event").last
+                    assert last.evaluate("""el => el.getBoundingClientRect().bottom <=
+                        el.parentElement.getBoundingClientRect().bottom + 1""")
+                    expect(last).to_contain_text("10:11")
+                    agenda.press("Home")
+                    page.wait_for_function("document.activeElement.scrollTop === 0")
+                else:
+                    assert agenda.evaluate("el => el.scrollHeight === el.clientHeight")
+                    last_hint = agenda.get_by_text("사용 예정 · 제출일 미확인")
+                    last_hint.scroll_into_view_if_needed()
+                    expect(last_hint).to_be_in_viewport()
+                    expect(agenda.locator(".calendar-event time").last).to_have_text("10:11")
+                if screenshot_dir:
+                    page.screenshot(path=Path(screenshot_dir) / f"calendar-dense-{width}x{height}-{scale}.png")
+            if screenshot_dir:
+                (Path(screenshot_dir) / "calendar-geometry.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
+            page.evaluate("document.documentElement.style.removeProperty('font-size')")
+            response.update(json=fixture)
+            page.clock.fast_forward(31000)
+            expect(calendar.locator(".calendar-event")).to_have_count(5)
             page.set_viewport_size({"width": 390, "height": 844})
             expect(calendar.locator(".calendar-day-long:visible")).to_have_text(
                 ["11월 3일 화요일", "11월 12일 목요일", "11월 20일 금요일", "11월 26일 목요일"])
@@ -337,6 +394,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                 {"status": "PENDING"},
                 {"events": [{**fixture["monthlyCalendar"]["events"][0], "time": "24:00"}]},
                 {"events": [{**fixture["monthlyCalendar"]["events"][0], "rawText": "비공개 원문"}]},
+                {"events": [{**fixture["monthlyCalendar"]["events"][0], "preparations": [{"label": "옷", "dueDate": "미정"}]}]},
             ):
                 response.update(json={**fixture, "monthlyCalendar": {**fixture["monthlyCalendar"], **invalid}})
                 with page.expect_response(endpoint):
@@ -423,8 +481,6 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             grid = week.locator("#week-days")
             days = grid.locator(":scope > li")
             review = week.locator("#week-review-list")
-            current_week = week.locator("#week-current")
-            next_week = week.locator("#week-next")
 
             def expect_week_dates(first_day):
                 expect(days).to_have_count(5)
@@ -435,8 +491,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                     expect(days.nth(offset).locator("time")).to_have_attribute("datetime", f"2026-11-{first_day + offset}")
 
             expect(week).to_be_visible()
-            expect(next_week).to_have_attribute("aria-pressed", "true")
-            expect(current_week).to_have_attribute("aria-pressed", "false")
+            expect(week.get_by_role("button")).to_have_count(0)
+            expect(week.locator("#week-range")).to_have_count(0)
             expect_week_dates(23)
             expect(week.locator('[aria-current="date"]')).to_have_count(0)
             for offset in (0, 2, 3):
@@ -459,21 +515,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                 expect(week).not_to_contain_text(title)
             for title in ("준비물 0", "인형극", "산책", "출입구 변경"):
                 expect(week).not_to_contain_text(title)
-            current_week.tap()
-            expect(current_week).to_have_attribute("aria-pressed", "true")
-            expect(next_week).to_have_attribute("aria-pressed", "false")
-            expect_week_dates(16)
-            expect(days.get_by_text("등록된 안내 없음", exact=True)).to_have_count(4)
-            expect(days.nth(3)).to_contain_text("도서 반납")
-            expect(days.nth(3)).to_contain_text("빌린 책 지참")
+            expect(grid).not_to_contain_text("도서 반납")
             expect(upcoming).not_to_contain_text("도서 반납")
-            expect(review).to_be_hidden()
-            expect(week).not_to_contain_text("체험 활동 준비")
-            next_week.tap()
-            expect(next_week).to_have_attribute("aria-pressed", "true")
-            expect_week_dates(23)
-            expect(days.nth(1)).to_contain_text("여벌 옷 지참")
-            expect(review_item).to_contain_text("미술 앞치마")
             expect(dialog).to_have_css("font-family", re.compile(r'^"Pretendard Variable",'))
             expect(preparation.get_by_role("heading", name="준비물", exact=True)).to_have_css("font-weight", "700")
             note = information.get_by_text("등원 시 정문 이용")
@@ -501,10 +544,6 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(review.locator("li")).to_have_count(0)
             expect(upcoming).to_contain_text("체험 활동 준비")
             expect(upcoming).to_contain_text("미술 앞치마")
-            current_week.tap()
-            expect_week_dates(16)
-            expect(grid).not_to_contain_text("도서 반납")
-            next_week.tap()
             page.set_viewport_size({"width": 390, "height": 500})
             boxes = [day.bounding_box() for day in days.all()]
             assert all(a["x"] == b["x"] and a["y"] + a["height"] <= b["y"] for a, b in zip(boxes, boxes[1:]))
@@ -527,11 +566,20 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                                   "complete": False, "reasonCode": "NO_RESULT_EVIDENCE",
                                   "checkedAt": None, "publishedAt": None, "deadlineState": "MISSED"})
             page.clock.fast_forward(31000)
-            expect(status).to_contain_text("실행 미확인")
+            expect(status).to_have_text("확인 필요")
             expect(button).not_to_have_class(re.compile(r"\bhas-items\b"))
             button.tap()
             expect(dialog.get_by_role("status")).to_contain_text("확인이 아직 끝나지 않았어요")
             expect(dialog.get_by_role("status")).not_to_contain_text("준비물 없음")
+            page.keyboard.press("Escape")
+
+            response.update(json={**fixture, "items": [], "state": "AUTH_REQUIRED", "complete": False,
+                                  "checkedAt": None, "publishedAt": None, "deadlineState": "MISSED"})
+            page.clock.fast_forward(31000)
+            expect(status).to_contain_text("키즈노트 재인증 필요")
+            button.tap()
+            expect(dialog.get_by_role("status")).to_contain_text("보호자가 키즈노트 인증을 확인해 주세요")
+            expect(dialog.get_by_role("link", name="가족 보드 로그인")).to_be_hidden()
             page.keyboard.press("Escape")
 
             response.update(json={**fixture, "items": [], "state": "NEEDS_REVIEW",
@@ -545,8 +593,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.clock.fast_forward(31000)
             button.tap()
             expect(dialog.get_by_role("status")).to_contain_text("준비물 없음 (보호자 확인)")
-            expect(dialog.get_by_role("status")).to_contain_text("자동 판정 마감 미충족")
-            expect(dialog.get_by_role("status")).to_contain_text("자료 충분성 검증 미등록")
+            expect(status).to_have_text("준비물 없음 (보호자 확인)")
+            expect(dialog.get_by_role("status")).not_to_contain_text(re.compile("자동 판정|마감|미등록|SOURCE_PROOF"))
             page.keyboard.press("Escape")
 
             response.update(json={**fixture, "items": fixture["items"][:1], "state": "NEEDS_REVIEW",
@@ -555,7 +603,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.clock.fast_forward(31000)
             expect(status).to_contain_text("확인 필요")
             expect(status).to_contain_text("11/20 05:21 확인")
-            expect(status).to_contain_text("마감 미충족")
+            expect(status).not_to_contain_text("마감")
             expect(page.locator("#supplies-list li")).to_have_count(1)
             button.tap()
             expect(dialog.locator("#supplies-dialog-status")).to_contain_text("확인 필요")
@@ -568,7 +616,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             # Same-day failure retains the verified list and its original timestamp.
             response.update(status=503, json={})
             page.clock.fast_forward(31000)
-            expect(status).to_contain_text("갱신 실패")
+            expect(status).to_contain_text("이전 확인 결과")
             expect(status).to_contain_text("05:27 확인")
             button.tap()
             expect(dialog).to_be_visible()
@@ -601,7 +649,6 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.clock.fast_forward(31000)
             expect(status).to_contain_text("전체 1개")
             button.tap()
-            expect(current_week).to_have_attribute("aria-pressed", "true")
             expect_week_dates(23)
             expect(days.locator('[aria-current="date"]')).to_have_attribute("datetime", monday)
             expect(days.first).to_contain_text("오늘")
@@ -654,23 +701,71 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
 
             # A December KST target exposes January of the next year even when the current month is absent.
             ctx.unroute(endpoint)
+            year_activity = {"date": "2027-01-01", "title": "김장 활동", "audience": "SHARED",
+                             "ageOneParticipation": "CONFIRMED", "preparations": [
+                                 {"label": "어린이 위생장갑"}, {"label": "앞치마", "dueDate": "2026-12-31"}]}
             year_end = {**fixture, "targetDate": "2026-12-31", "serverNow": "2026-12-30T15:01:00Z",
-                        "items": [], "state": "EMPTY", "nextMonthlyCalendar": {
+                        "items": [], "state": "NEEDS_REVIEW", "complete": False, "deadlineState": "PENDING",
+                        "checkedAt": None, "publishedAt": None, "nextMonthlyCalendar": {
                             "month": "2027-01", "status": "AVAILABLE",
-                            "events": [{"date": "2027-01-04", "title": "새해 놀이", "audience": "SHARED"}]}}
+                            "events": [year_activity, {"date": "2027-01-04", "title": "새해 놀이", "audience": "SHARED"}]}}
             del year_end["monthlyCalendar"]
-            ctx.route(endpoint, lambda route: route.fulfill(json=year_end))
-            page.clock.set_system_time(datetime(2026, 12, 30, 15, 1, tzinfo=timezone.utc))
-            page.clock.fast_forward(31000)
-            button.tap()
-            calendar_button.tap()
-            expect(december_button).to_have_attribute("aria-pressed", "true")
-            calendar.get_by_role("button", name="2027년 1월").tap()
-            expect(calendar_days.nth(3)).to_contain_text("새해 놀이")
-            page.keyboard.press("Escape")
-            expect(calendar_button).to_be_focused()
-            page.keyboard.press("Escape")
-            expect(button).to_be_focused()
+            away = browser.new_context(timezone_id="America/Los_Angeles", has_touch=True)
+            away.route("https://**/*", lambda route: route.abort())
+            away.route(endpoint, lambda route: route.fulfill(json=year_end))
+            year_page = away.new_page()
+            year_page.clock.install(time=datetime(2026, 12, 30, 15, 1, tzinfo=timezone.utc))
+            year_page.goto(origin)
+            year_page.locator("#supplies-button").tap()
+            year_days = year_page.locator("#week-days > li")
+            expect(year_days.locator('[aria-current="date"]')).to_have_attribute("datetime", "2026-12-31")
+            assert year_page.evaluate("new Date().getDate()") == 30
+            expect(year_days.first.locator("time")).to_have_attribute("datetime", "2026-12-28")
+            expect(year_days.last.locator("time")).to_have_attribute("datetime", "2027-01-01")
+            expect(year_days.nth(3).locator(".week-activity")).to_contain_text("김장 활동 준비물 제출")
+            expect(year_days.nth(3).locator(".week-activity")).to_contain_text("앞치마")
+            expect(year_days.nth(3).locator(".week-activity")).not_to_contain_text("위생장갑")
+            weekly_activity = year_days.last.locator(".week-activity")
+            expect(weekly_activity).to_contain_text("김장 활동에 사용")
+            expect(weekly_activity).to_contain_text("전체 공통 · 1세 참여 확인")
+            expect(weekly_activity.get_by_role("listitem").nth(0)).to_have_text("어린이 위생장갑사용 예정 · 제출일 미확인")
+            expect(weekly_activity.get_by_role("listitem").nth(1)).to_have_text("앞치마제출일 2026-12-31")
+            expect(year_page.locator("#supplies-list li")).to_have_count(0)
+            if screenshot_dir:
+                year_page.screenshot(path=Path(screenshot_dir) / "school-week-year-end.png")
+            year_page.locator("#calendar-button").tap()
+            expect(year_page.get_by_role("button", name="2026년 12월")).to_have_attribute("aria-pressed", "true")
+            year_page.get_by_role("button", name="2027년 1월").tap()
+            expect(year_page.locator("#calendar-days > li").nth(3)).to_contain_text("새해 놀이")
+            january_event = year_page.locator("#calendar-days > li").first.locator(".calendar-event")
+            expect(january_event).to_contain_text("1세 참여 확인")
+            expect(january_event.get_by_role("listitem").first).to_contain_text("제출일 미확인")
+            expect(january_event.get_by_role("listitem").last).to_contain_text("제출일 2026-12-31")
+            year_page.keyboard.press("Escape")
+            expect(year_page.locator("#calendar-button")).to_be_focused()
+            year_page.keyboard.press("Escape")
+            expect(year_page.locator("#supplies-button")).to_be_focused()
+
+            # Friday evening in Seoul becomes Saturday while the device still reads Friday.
+            year_end.update(targetDate="2027-01-01", serverNow="2027-01-01T14:59:40Z", state="NEEDS_REVIEW",
+                            complete=False, deadlineState="MISSED", checkedAt=None, publishedAt=None,
+                            monthlyCalendar=year_end.pop("nextMonthlyCalendar"))
+            year_page.clock.set_system_time(datetime(2027, 1, 1, 14, 59, 40, tzinfo=timezone.utc))
+            year_page.reload()
+            year_page.locator("#supplies-button").tap()
+            expect(year_days.last.locator("time")).to_have_attribute("aria-current", "date")
+            expect(year_days.last).to_contain_text("확인 필요")
+            expect(year_days.last).not_to_contain_text("준비물 없음")
+            expect(year_days.last).to_contain_text("어린이 위생장갑")
+            expect(year_page.locator("#supplies-list li")).to_have_count(0)
+            year_end.update(targetDate="2027-01-02", serverNow="2027-01-01T15:00:11Z")
+            year_page.clock.fast_forward(31000)
+            expect(year_page.locator("#kidsnote-date")).to_have_attribute("datetime", "2027-01-02")
+            expect(year_days.first.locator("time")).to_have_attribute("datetime", "2027-01-04")
+            expect(year_days.last.locator("time")).to_have_attribute("datetime", "2027-01-08")
+            expect(year_days.locator('[aria-current="date"]')).to_have_count(0)
+            assert year_page.evaluate("new Date().getDate()") == 1
+            away.close()
 
             # A response initiated before midnight cannot put yesterday's list back on screen.
             ctx.unroute(endpoint)

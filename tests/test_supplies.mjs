@@ -23,10 +23,26 @@ test("calendar validation binds every event to the displayed Seoul month", () =>
 
 test("Seoul school weeks span Monday to Friday across the year boundary", () => {
   const week = ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01"];
-  for (const target of [week[0], week[4], "2027-01-02", "2027-01-03"]) {
+  for (const target of week) {
     assert.deepEqual(schoolWeek(target), week);
   }
-  assert.deepEqual(schoolWeek("2027-01-03", true), schoolWeek("2027-01-04"));
+  for (const target of ["2027-01-02", "2027-01-03", "2027-01-04"]) {
+    assert.deepEqual(schoolWeek(target), ["2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08"]);
+  }
+});
+
+test("activity supplies carry their own deadline and explicit age-one participation", () => {
+  const event = {date: "2027-01-01", title: "김장 활동", audience: "SHARED",
+    ageOneParticipation: "CONFIRMED", preparations: [{label: "어린이 위생장갑"}, {label: "앞치마", dueDate: "2026-12-30"}]};
+  const valid = row => validateMonthlyCalendar({month: "2027-01", status: "NEEDS_REVIEW", events: [row]}, "2026-12-31", 1);
+  assert.ok(valid(event));
+  for (const change of [{ageOneParticipation: true}, {ageOneParticipation: "UNKNOWN"}, {audience: "OTHER"},
+    {preparations: []}, {preparations: null}, {preparations: [{label: " "}]}, {preparations: [{label: "가".repeat(161)}]},
+    {preparations: [{label: "옷", dueDate: "2026-02-30"}]}, {preparations: [{label: "옷", rawText: "x"}]},
+    {preparations: [{label: "옷", dueDate: "2026-12-30"}, {dueDate: "2026-12-30", label: "옷"}]},
+    {preparations: Array.from({length: 26}, (_, i) => ({label: String(i)}))}]) {
+    assert.equal(valid({...event, ...change}), false);
+  }
 });
 
 test("does not assign a rolled-over bulletin date to an unrelated weekday", () => {

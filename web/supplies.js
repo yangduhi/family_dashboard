@@ -1,7 +1,7 @@
 const kst = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", dateStyle: "short" });
 const clock = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const states = { READY: "준비물 있음", EMPTY: "준비물 없음", NEEDS_REVIEW: "확인 필요", AUTH_REQUIRED: "키즈노트 재인증 필요", PENDING: "갱신 대기" };
-const deadlines = { PENDING: "", ON_TIME: "마감 준수", LATE: "지연 게시", MISSED: "마감 미충족" };
+const deadlines = new Set(["PENDING", "ON_TIME", "LATE", "MISSED"]);
 const sources = { report: "알림장", notice: "공지", calendar: "월간행사표" };
 const ready = (state) => state === "READY" || state === "EMPTY";
 const date = (value) => {
@@ -23,14 +23,30 @@ function calendarMonthFor(targetDate, offset) {
   return day.toISOString().slice(0, 7);
 }
 
+function validPreparations(items) {
+  if (!Array.isArray(items) || items.length < 1 || items.length > 25) return false;
+  const seen = new Set();
+  for (const item of items) {
+    if (!hasOnlyKeys(item, ["label", "dueDate"]) || typeof item.label !== "string" ||
+        !item.label.trim() || [...item.label].length > 160 ||
+        (Object.hasOwn(item, "dueDate") && !date(item.dueDate))) return false;
+    const key = JSON.stringify([item.label, item.dueDate]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
 export function validateMonthlyCalendar(calendar, targetDate, monthOffset = 0) {
   if (!date(targetDate) || ![0, 1].includes(monthOffset) || !hasOnlyKeys(calendar, ["month", "status", "events"]) ||
       calendar.month !== calendarMonthFor(targetDate, monthOffset) || !["AVAILABLE", "NEEDS_REVIEW", "PENDING"].includes(calendar.status) ||
       !Array.isArray(calendar.events) || (calendar.status === "PENDING" && calendar.events.length)) return false;
-  return calendar.events.every(row => hasOnlyKeys(row, ["date", "title", "audience", "time"]) &&
+  return calendar.events.every(row => hasOnlyKeys(row, ["date", "title", "audience", "time", "preparations", "ageOneParticipation"]) &&
     date(row.date) && row.date.startsWith(calendar.month + "-") &&
     typeof row.title === "string" && row.title.trim().length > 0 && [...row.title].length <= 160 &&
     typeof row.audience === "string" && Object.hasOwn(calendarAudiences, row.audience) &&
+    (!Object.hasOwn(row, "preparations") || validPreparations(row.preparations)) &&
+    (!Object.hasOwn(row, "ageOneParticipation") || (row.ageOneParticipation === "CONFIRMED" && row.audience !== "OTHER")) &&
     (!Object.hasOwn(row, "time") || (typeof row.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(row.time))));
 }
 const bulletinStatuses = { VERIFIED: "확인됨", REVIEW_REQUIRED: "확인 필요" };
@@ -45,19 +61,13 @@ function validBulletin(row) {
     typeof row.title === "string" && row.title.trim().length > 0 && row.title.length <= 160 &&
     typeof row.detail === "string" && row.detail.length <= 400;
 }
-const blockers = {
-  DAILY_LIVE_DISABLED: "자동 판정 비활성",
-  RELEASE_APPROVAL_MISSING: "운영 승인 설정 미등록",
-  LOGIN_PROOF_MISSING: "로그인 검증 미등록",
-  SOURCE_PROOF_MISSING: "자료 충분성 검증 미등록",
-  SOURCE_PROOF_UNVERIFIED: "자료 충분성 검증 재확인 필요",
-  DAILY_CHECK_FAILED: "판정 시작 조건 확인 실패",
-};
+const blockers = new Set(["DAILY_LIVE_DISABLED", "RELEASE_APPROVAL_MISSING", "LOGIN_PROOF_MISSING",
+  "SOURCE_PROOF_MISSING", "SOURCE_PROOF_UNVERIFIED", "DAILY_CHECK_FAILED"]);
 
 export function validateSupplies(data) {
   if (!data || data.schemaVersion !== 1 || !date(data.targetDate) || !stamp(data.serverNow) ||
       kst.format(new Date(data.serverNow)) !== data.targetDate || !Object.hasOwn(states, data.state) ||
-      !Object.hasOwn(deadlines, data.deadlineState) || data.complete !== ready(data.state) ||
+      !deadlines.has(data.deadlineState) || data.complete !== ready(data.state) ||
       ![data.checkedAt, data.publishedAt].every((value) => value === null || stamp(value)) ||
       !Array.isArray(data.items)) return false;
   if (ready(data.state) && (!data.checkedAt || !data.publishedAt)) return false;
@@ -66,7 +76,7 @@ export function validateSupplies(data) {
       data.guardianConfirmation.source !== "GUARDIAN" || !date(data.guardianConfirmation.sourceDate) ||
       data.guardianConfirmation.sourceDate > data.targetDate || data.complete || data.items.length)) return false;
   if (data.dailyAssessment !== undefined && (!Array.isArray(data.dailyAssessment?.blockers) ||
-      !data.dailyAssessment.blockers.every(code=>Object.hasOwn(blockers,code)))) return false;
+      !data.dailyAssessment.blockers.every(code=>blockers.has(code)))) return false;
   if (data.bulletins !== undefined && (!Array.isArray(data.bulletins) || data.bulletins.length > 20 ||
       !data.bulletins.every(validBulletin))) return false;
   if (data.weekPreparations !== undefined && (!Array.isArray(data.weekPreparations) ||
@@ -94,10 +104,10 @@ function textElement(tag, text, className) {
 }
 
 // targetDate is already a Seoul calendar date. UTC arithmetic keeps device time zones out.
-export function schoolWeek(targetDate, nextWeek = false) {
+export function schoolWeek(targetDate) {
   const day = new Date(targetDate + "T00:00:00Z");
   const mondayOffset = (day.getUTCDay() + 6) % 7;
-  day.setUTCDate(day.getUTCDate() - mondayOffset + (nextWeek ? 7 : 0));
+  day.setUTCDate(day.getUTCDate() - mondayOffset + (mondayOffset >= 5 ? 7 : 0));
   return Array.from({ length: 5 }, () => {
     const value = day.toISOString().slice(0, 10);
     day.setUTCDate(day.getUTCDate() + 1);
@@ -111,7 +121,24 @@ function dayLabel(value) {
   return value.slice(5).replace("-", "/") + " (" + weekday.format(new Date(value + "T00:00:00Z")) + ")";
 }
 
-function weekDayCell(value, data, rows) {
+function preparationList(event) {
+  const list = document.createElement("ul");
+  list.className = "activity-preparations";
+  list.setAttribute("aria-label", event.title + "에 사용할 준비물");
+  for (const item of event.preparations) {
+    const line = textElement("li", item.label);
+    line.append(textElement("small", item.dueDate ? "제출일 " + item.dueDate : "사용 예정 · 제출일 미확인"));
+    list.append(line);
+  }
+  return list;
+}
+
+function audienceLabel(event) {
+  const audience = calendarAudiences[event.audience];
+  return event.ageOneParticipation === "CONFIRMED" ? audience + " · 1세 참여 확인" : audience;
+}
+
+function weekDayCell(value, data, rows, activities, submissions) {
   const today = value === data.targetDate;
   const cell = document.createElement("li");
   const header = document.createElement("div");
@@ -134,7 +161,23 @@ function weekDayCell(value, data, rows) {
     cell.append(textElement("strong", row.title));
     if (row.detail) cell.append(textElement("small", row.detail));
   }
-  if ((today && !data.complete) || (!items.length && !notices.length)) {
+  for (const event of submissions) {
+    const section = document.createElement("section");
+    section.className = "week-activity";
+    section.append(textElement("strong", event.title + " 준비물 제출"), textElement("small", audienceLabel(event)));
+    for (const item of event.preparations.filter(item => item.dueDate === value)) {
+      section.append(textElement("strong", item.label));
+    }
+    cell.append(section);
+  }
+  for (const event of activities) {
+    const section = document.createElement("section");
+    section.className = "week-activity";
+    section.append(textElement("strong", event.title + "에 사용"), textElement("small", audienceLabel(event)),
+      preparationList(event));
+    cell.append(section);
+  }
+  if ((today && !data.complete) || (!items.length && !notices.length && (today || (!activities.length && !submissions.length)))) {
     const label = today ? labelFor(data, "result") : rows.length ? "확정된 안내 없음" : "등록된 안내 없음";
     cell.append(textElement("small", label, "week-day-status"));
   }
@@ -182,8 +225,6 @@ function start() {
   const endpoint = new URL("./api/supplies/today", location.href);
   const week = document.getElementById("kidsnote-week");
   const weekDays = document.getElementById("week-days");
-  const currentWeek = document.getElementById("week-current");
-  const nextWeek = document.getElementById("week-next");
   const calendarButton = document.getElementById("calendar-button");
   const calendarDialog = document.getElementById("calendar-dialog");
   const calendarMonths = document.getElementById("calendar-months");
@@ -191,7 +232,7 @@ function start() {
   const calendarStatus = document.getElementById("calendar-status");
   const calendarContent = document.getElementById("calendar-content");
   const calendarDays = document.getElementById("calendar-days");
-  let showNextWeek = false;
+  let renderedCalendar = null;
   let monthOffset = 0;
   let current = null;
   let mode = "checking";
@@ -207,29 +248,23 @@ function start() {
     const reviewList = document.getElementById("week-review-list");
     reviewList.replaceChildren();
     if (!data) return;
-    const dates = schoolWeek(data.targetDate, showNextWeek);
-    document.getElementById("week-range").textContent = dayLabel(dates[0]) + " – " + dayLabel(dates[4]);
-    currentWeek.setAttribute("aria-pressed", String(!showNextWeek));
-    nextWeek.setAttribute("aria-pressed", String(showNextWeek));
+    const dates = schoolWeek(data.targetDate);
     const notices = (data.weekPreparations ?? data.bulletins ?? []).filter(row =>
       row.kind === "PREPARATION" && dates.includes(row.date));
-    weekDays.append(...dates.map(value => weekDayCell(value, data, notices.filter(row => row.date === value))));
+    const activities = [data.monthlyCalendar, data.nextMonthlyCalendar].flatMap(month => month?.events ?? [])
+      .filter(event => event.preparations && event.audience !== "OTHER");
+    weekDays.append(...dates.map(value => weekDayCell(value, data, notices.filter(row => row.date === value),
+      activities.filter(event => event.date === value),
+      activities.filter(event => event.date !== value && event.preparations.some(item => item.dueDate === value)))));
     const pending = notices.filter(row => row.status === "REVIEW_REQUIRED");
     document.getElementById("week-review").hidden = pending.length === 0;
     reviewList.append(...pending.map(row => renderRow(row.title, row.detail,
       "게시 " + dayLabel(row.sourceDate), "지참일·조건 확인 필요")));
   }
-  for (const control of [currentWeek, nextWeek]) {
-    control.addEventListener("click", () => {
-      showNextWeek = control === nextWeek;
-      renderWeek(current);
-    });
-  }
 
   function renderCalendar(data) {
     const calendar = monthOffset === 0 ? data?.monthlyCalendar : data?.nextMonthlyCalendar;
     calendarButton.hidden = !data;
-    calendarDays.replaceChildren();
     calendarContent.hidden = !calendar || calendar.status === "PENDING";
     calendarMonths.hidden = !data;
     monthButtons.forEach((control, offset) => {
@@ -245,10 +280,15 @@ function start() {
     if (calendar) {
       message = { AVAILABLE: "", NEEDS_REVIEW: "일정표 확인 필요", PENDING: "월간 일정표 갱신 대기" }[calendar.status];
       if (calendar.status === "AVAILABLE" && !calendar.events.length) message = "등록된 행사 없음";
-      if (mode === "stale") message = [message, "갱신 실패"].filter(Boolean).join(" · ");
+      if (mode === "stale") message = [message, "이전 확인 결과"].filter(Boolean).join(" · ");
     }
     calendarStatus.hidden = !message;
     calendarStatus.textContent = message;
+    // A routine poll must not reset focus or scroll inside a day's event list.
+    const contentKey = calendarContent.hidden ? null : JSON.stringify([data.targetDate, calendar]);
+    if (contentKey === renderedCalendar) return;
+    renderedCalendar = contentKey;
+    calendarDays.replaceChildren();
     if (calendarContent.hidden) return;
     const day = new Date(calendar.month + "-01T00:00:00Z");
     const monthIndex = day.getUTCMonth();
@@ -269,14 +309,25 @@ function start() {
           "calendar-day-long"));
       if (value === data.targetDate) time.setAttribute("aria-current", "date");
       cell.append(time);
-      for (const event of byDate.get(value) ?? []) {
-        const row = document.createElement("div");
+      const events = byDate.get(value) ?? [];
+      const eventList = document.createElement("ul");
+      if (events.length) {
+        eventList.className = "calendar-events";
+        eventList.tabIndex = 0;
+        eventList.setAttribute("aria-label", fullDate.format(day) + " 행사 " + events.length + "개");
+        if (events.length > 1) cell.append(textElement("small", events.length + "개", "calendar-count"));
+        cell.append(eventList);
+      }
+      for (const event of events) {
+        const row = document.createElement("li");
         row.className = "calendar-event";
         row.dataset.audience = event.audience;
-        row.append(textElement("span", calendarAudiences[event.audience], "calendar-audience"),
+        if (event.ageOneParticipation) row.dataset.participation = event.ageOneParticipation;
+        row.append(textElement("span", audienceLabel(event), "calendar-audience"),
           textElement("strong", event.title));
         if (event.time) row.append(textElement("time", event.time));
-        cell.append(row);
+        if (event.preparations) row.append(preparationList(event));
+        eventList.append(row);
       }
       calendarDays.append(cell);
       day.setUTCDate(day.getUTCDate() + 1);
@@ -309,16 +360,10 @@ function start() {
       checkedDay !== data.targetDate && checkedDay.slice(5).replace("-", "/"),
       clock.format(checkedAt) + " 확인",
     ].filter(Boolean).join(" ") : "";
-    const deadline = data?.guardianConfirmation ? (data.deadlineState === "MISSED" ? "자동 판정 마감 미충족" : "") :
-      data?.reasonCode === "NO_RESULT_EVIDENCE" && data.deadlineState === "MISSED" ?
-      "마감 미충족 · 실행 미확인" : data ? deadlines[data.deadlineState] : "";
     const failure = mode === "stale" || (ready(data?.state) && data?.latestAttempt?.status === "FAILED");
-    const note = [checked, deadline, failure && "갱신 실패",
-      data?.state === "PENDING" && data.deadlineState === "PENDING" && !data.guardianConfirmation && "05:10 KST 수집 예정",
+    const note = [checked, failure && "이전 확인 결과",
       data?.state === "AUTH_REQUIRED" && "보호자가 키즈노트 인증을 확인해 주세요"].filter(Boolean).join(" · ");
-    const decisionBlockers = data?.dailyAssessment?.blockers.map(code=>blockers[code]) ?? [];
-    const guidance = !data?.complete && decisionBlockers.length ? "자동 판정 대기 (" + decisionBlockers.join(", ") + ")" :
-      data?.state === "NEEDS_REVIEW" && !hasItems && !data.guardianConfirmation ?
+    const guidance = data?.state === "NEEDS_REVIEW" && !hasItems && !data.guardianConfirmation ?
         "오늘 준비물 확인이 아직 끝나지 않았어요." : "";
     status.textContent = [title + count, note].filter(Boolean).join(" · ");
     dialogState.textContent = data?.state === "READY" ? `오늘 준비물 ${items.length}개` : title + count;
@@ -351,10 +396,6 @@ function start() {
   }
 
   function update(next, nextMode) {
-    if (next && current?.targetDate !== next.targetDate) {
-      const day = new Date(next.targetDate + "T00:00:00Z").getUTCDay();
-      showNextWeek = day === 0 || day === 6;
-    }
     current = next;
     mode = nextMode;
     render();
