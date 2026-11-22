@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Pretendard Offline";
-  src: url("./fonts/PretendardVariable.woff2?release=v13") format("woff2");
+  src: url("./fonts/PretendardVariable.woff2?release=v14") format("woff2");
   font-weight: 45 920;
   font-style: normal;
   font-display: swap;
@@ -302,20 +302,6 @@ svg {
   cursor: pointer;
 }
 
-#supplies-dialog-status,
-.supplies-list {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.supplies-list {
-  padding-inline-start: 1.4rem;
-}
-
-.supplies-list li + li { margin-block-start: 0.5rem; }
-
-.supplies-list small { display: block; }
-
 #supplies-details[hidden] { display: none; }
 
 .weather-date {
@@ -487,7 +473,6 @@ svg {
 .tomorrow-heading h2 {
   margin: 0;
   font-size: 14px;
-  font-weight: 800;
 }
 
 .tomorrow-heading time {
@@ -1189,7 +1174,9 @@ dialog:is(.parent-dialog, .supplies-dialog) {
 }
 
 dialog.supplies-dialog {
-  inline-size: min(520px, 92dvw);
+  inline-size: min(1040px, calc(100dvw - 32px));
+  border-width: 1px;
+  background: color-mix(in srgb, var(--card-bg) 26%, white);
 }
 
 dialog:is(.parent-dialog, .supplies-dialog)[open] {
@@ -1234,14 +1221,142 @@ dialog:is(.parent-dialog, .supplies-dialog)::backdrop {
   cursor: pointer;
 }
 
-.supplies-dialog .dialog-close-btn { min-block-size: 44px; }
-
 .dialog-body {
   padding: 18px 22px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.supplies-dialog .dialog-head {
+  flex: none;
+  gap: 16px;
+  padding: 14px clamp(16px, 3vw, 28px);
+  border-bottom-width: 1px;
+  background: color-mix(in srgb, var(--weather-bg) 58%, white);
+}
+
+.supplies-dialog .dialog-head h2 { font-size: 25px; }
+
+.supplies-dialog .dialog-close-btn {
+  min-block-size: 44px;
+  color: var(--ink-main);
+  background: white;
+  border-width: 1px;
+}
+
+.supplies-dialog :is(.dialog-close-btn, .kidsnote-login):focus-visible {
+  outline: 2px solid var(--ink-main);
+  outline-offset: 3px;
+}
+
+.supplies-dialog .dialog-body {
+  padding: 16px clamp(12px, 3vw, 28px) 24px;
+  gap: 16px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.kidsnote-date, .kidsnote-status p, .kidsnote-source { color: var(--ink-muted); }
+
+.kidsnote-date, .kidsnote-source { font-size: 0.875rem; }
+
+.kidsnote-status {
+  padding: 12px 16px;
+  background: var(--weather-card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+.kidsnote-status strong { font-size: 1.0625rem; }
+
+.kidsnote-status p { margin: 4px 0 0; font-size: 0.9375rem; }
+
+.kidsnote-login:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-block-size: 44px;
+  padding: 0 14px;
+  color: var(--ink-main);
+  background: white;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  font-weight: 650;
+}
+
+.kidsnote-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.kidsnote-sections:not(:has(.kidsnote-section:not([hidden]))) { display: none; }
+
+.kidsnote-section {
+  min-inline-size: 0;
+  padding: 12px 14px 14px;
+  background: white;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+}
+
+.kidsnote-section h3 {
+  margin: 0;
+  padding-block-end: 8px;
+  border-block-end: 2px solid var(--card-border);
+  font-size: 1.125rem;
+}
+
+.kidsnote-section h4 {
+  margin: 12px 0 0;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.kidsnote-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kidsnote-list li { padding-block: 10px; }
+.kidsnote-list li:last-child { padding-block-end: 0; }
+.kidsnote-list li + li { border-block-start: 1px solid var(--card-border); }
+
+.kidsnote-row-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.kidsnote-row-heading strong { min-inline-size: 0; font-weight: 700; }
+
+.kidsnote-tag, .kidsnote-review {
+  display: inline-block;
+  max-inline-size: 100%;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.kidsnote-tag { color: var(--ink-main); background: var(--weather-card-bg); }
+
+.kidsnote-review { margin-block-start: 4px; color: #7c3a06; background: #ffedd5; }
+
+.kidsnote-row-detail { margin: 4px 0 0; white-space: pre-line; }
+
+.kidsnote-source { display: block; margin-block-start: 4px; }
+
+@media (max-width: 879px) {
+  .kidsnote-sections { grid-template-columns: minmax(0, 1fr); }
 }
 
 .setting-section {

@@ -8,7 +8,11 @@ const date = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(
 const stamp = (value) => typeof value === "string" && /T.*(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value));
 const nullableText = (value) => value === null || typeof value === "string";
 const bulletinStatuses = { VERIFIED: "확인됨", REVIEW_REQUIRED: "확인 필요" };
-const bulletinKinds = { EVENT: "행사", PREPARATION: "준비", INFORMATION: "안내" };
+const bulletinLists = {
+  PREPARATION: "kidsnote-upcoming-list",
+  EVENT: "kidsnote-events-list",
+  INFORMATION: "kidsnote-information-list",
+};
 const blockers = {
   DAILY_LIVE_DISABLED: "자동 판정 비활성",
   RELEASE_APPROVAL_MISSING: "운영 승인 설정 미등록",
@@ -33,7 +37,7 @@ export function validateSupplies(data) {
       !data.dailyAssessment.blockers.every(code=>Object.hasOwn(blockers,code)))) return false;
   if (data.bulletins !== undefined && (!Array.isArray(data.bulletins) || data.bulletins.length > 20 ||
       !data.bulletins.every((row) => row && Object.hasOwn(bulletinStatuses, row.status) &&
-        Object.hasOwn(bulletinKinds, row.kind) && (row.date === null || date(row.date)) &&
+        Object.hasOwn(bulletinLists, row.kind) && (row.date === null || date(row.date)) &&
         date(row.sourceDate) && typeof row.title === "string" && row.title.length <= 160 &&
         typeof row.detail === "string" && row.detail.length <= 400))) return false;
   return data.items.every((item) => item && typeof item.label === "string" && item.label.trim() &&
@@ -51,8 +55,32 @@ function labelFor(data, mode) {
   return states[data.state];
 }
 
-function itemText(item) {
-  return [item.label, item.quantity, item.condition].filter((part) => part !== null && part !== "").join(" · ");
+function textElement(tag, text, className) {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+
+function renderRow(title, detail, source, badge, dateValue, needsReview = false) {
+  const row = document.createElement("li");
+  const heading = document.createElement("div");
+  heading.className = "kidsnote-row-heading";
+  heading.append(textElement("strong", title));
+  if (dateValue || badge) {
+    const tag = textElement(dateValue ? "time" : "span", badge, "kidsnote-tag");
+    if (dateValue) {
+      tag.dateTime = dateValue;
+      heading.prepend(tag);
+    } else {
+      heading.append(tag);
+    }
+  }
+  row.append(heading);
+  if (needsReview) row.append(textElement("span", bulletinStatuses.REVIEW_REQUIRED, "kidsnote-review"));
+  if (detail) row.append(textElement("p", detail, "kidsnote-row-detail"));
+  row.append(textElement("small", source, "kidsnote-source"));
+  return row;
 }
 
 function start() {
@@ -61,10 +89,15 @@ function start() {
   if (!button || !dialog) return;
   const details = document.getElementById("supplies-details");
   const status = document.getElementById("supplies-status");
-  const dialogStatus = document.getElementById("supplies-dialog-status");
+  const dialogDate = document.getElementById("kidsnote-date");
+  const dialogState = document.getElementById("kidsnote-state");
+  const dialogNote = document.getElementById("kidsnote-status-note");
+  const dialogGuidance = document.getElementById("kidsnote-guidance");
   const list = document.getElementById("supplies-list");
-  const bulletinsSection = document.getElementById("kidsnote-bulletins");
-  const bulletinList = document.getElementById("kidsnote-bulletin-list");
+  const todayTitle = document.getElementById("kidsnote-today-title");
+  const upcomingTitle = document.getElementById("kidsnote-upcoming-title");
+  const preparation = document.getElementById("kidsnote-preparation");
+  const bulletinGroups = Object.entries(bulletinLists).map(([kind, id]) => [kind, document.getElementById(id)]);
   const login = document.getElementById("supplies-login");
   const dialogLogin = document.getElementById("supplies-dialog-login");
   const endpoint = new URL("./api/supplies/today", location.href);
@@ -83,7 +116,7 @@ function start() {
     const bulletins = data?.bulletins ?? [];
     const hasItems = items.length > 0;
     button.classList.toggle("has-items", hasItems || bulletins.length > 0);
-    list.hidden = !hasItems;
+    list.hidden = todayTitle.hidden = !hasItems;
     if (hasItems || bulletins.length) {
       button.setAttribute("aria-description", hasItems ? "오늘 표시할 준비물이 있습니다. 상세 내용을 확인해 주세요." :
         "확인할 일정과 안내가 있습니다.");
@@ -103,32 +136,36 @@ function start() {
       data?.reasonCode === "NO_RESULT_EVIDENCE" && data.deadlineState === "MISSED" ?
       "마감 미충족 · 실행 미확인" : data ? deadlines[data.deadlineState] : "";
     const failure = mode === "stale" || (ready(data?.state) && data?.latestAttempt?.status === "FAILED");
-    const summary = [title + count, checked, deadline, failure && "갱신 실패"].filter(Boolean).join(" · ");
+    const note = [checked, deadline, failure && "갱신 실패",
+      data?.state === "PENDING" && data.deadlineState === "PENDING" && !data.guardianConfirmation && "05:10 KST 수집 예정",
+      data?.state === "AUTH_REQUIRED" && "보호자가 키즈노트 인증을 확인해 주세요"].filter(Boolean).join(" · ");
     const decisionBlockers = data?.dailyAssessment?.blockers.map(code=>blockers[code]) ?? [];
     const guidance = !data?.complete && decisionBlockers.length ? "자동 판정 대기 (" + decisionBlockers.join(", ") + ")" :
       data?.state === "NEEDS_REVIEW" && !hasItems && !data.guardianConfirmation ?
         "오늘 준비물 확인이 아직 끝나지 않았어요." : "";
-    status.textContent = [summary,
-      data?.state === "PENDING" && data.deadlineState === "PENDING" && !data.guardianConfirmation && "05:10 KST 수집 예정",
-      data?.state === "AUTH_REQUIRED" && "보호자가 키즈노트 인증을 확인해 주세요"].filter(Boolean).join(" · ");
-    dialogStatus.textContent = [status.textContent, guidance].filter(Boolean).join(" · ");
-    list.replaceChildren(...items.map((item) => {
-      const row = document.createElement("li");
-      const source = document.createElement("small");
-      source.textContent = `${sources[item.sourceType]} · ${item.sourceDate}`;
-      row.append(itemText(item), source);
-      return row;
-    }));
-    if (bulletinsSection && bulletinList) {
-      bulletinsSection.hidden = bulletins.length === 0;
-      bulletinList.replaceChildren(...bulletins.map((item) => {
-        const row = document.createElement("li");
-        const note = document.createElement("small");
-        const day = item.date ? item.date.slice(5).replace("-", "/") + " " : "";
-        note.textContent = [bulletinKinds[item.kind], bulletinStatuses[item.status], item.detail].filter(Boolean).join(" · ");
-        row.append(day + item.title, note);
-        return row;
-      }));
+    status.textContent = [title + count, note].filter(Boolean).join(" · ");
+    dialogState.textContent = data?.state === "READY" ? `오늘 준비물 ${items.length}개` : title + count;
+    dialogNote.hidden = !note;
+    dialogNote.textContent = note;
+    dialogGuidance.hidden = !guidance;
+    dialogGuidance.textContent = guidance;
+    dialogDate.hidden = !data;
+    if (data) dialogDate.dateTime = dialogDate.textContent = data.targetDate;
+    list.replaceChildren(...items.map((item) => renderRow(item.label, item.condition,
+      `${sources[item.sourceType]} · ${item.sourceDate}`, item.quantity)));
+    for (const [kind, groupList] of bulletinGroups) {
+      const rows = bulletins.filter((item) => item.kind === kind);
+      if (kind !== "INFORMATION") rows.sort((a, b) => (a.date ?? "\uffff").localeCompare(b.date ?? "\uffff"));
+      if (kind === "PREPARATION") {
+        groupList.hidden = upcomingTitle.hidden = rows.length === 0;
+        preparation.hidden = !hasItems && rows.length === 0;
+      } else {
+        groupList.parentElement.hidden = rows.length === 0;
+      }
+      groupList.replaceChildren(...rows.map((item) => renderRow(item.title, item.detail,
+        `${item.status === "VERIFIED" ? `${bulletinStatuses.VERIFIED} · ` : ""}게시 ${item.sourceDate}`,
+        item.date ? item.date.slice(5).replace("-", "/") : kind === "INFORMATION" ? "" : "날짜 미확인",
+        item.date, item.status === "REVIEW_REQUIRED")));
     }
   }
 

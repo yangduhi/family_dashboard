@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#ffeb3b">
   <meta name="family-dashboard-shell" content="2">
-  <meta name="family-dashboard-release" content="v13">
+  <meta name="family-dashboard-release" content="v14">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>어린이집 등원 준비 가족 대시보드</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" crossorigin="anonymous" referrerpolicy="no-referrer" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="./styles.css?release=v13">
+  <link rel="stylesheet" href="./styles.css?release=v14">
 </head>
 <body>
   <div class="scenic-layer" aria-hidden="true">
@@ -107,7 +107,7 @@
         </button>
         <button type="button" class="supplies-button" id="supplies-button" aria-label="키즈노트"
           aria-haspopup="dialog" aria-controls="supplies-dialog" hidden>
-          <img src="./kidsnote_app_icon.svg?release=v13" alt="" width="36" height="36">
+          <img src="./kidsnote_app_icon.svg?release=v14" alt="" width="36" height="36">
         </button>
       </div>
     </header>
@@ -277,23 +277,42 @@
 
   <dialog id="supplies-dialog" class="supplies-dialog" closedby="closerequest" aria-labelledby="supplies-dialog-title">
     <div class="dialog-head">
-      <h2 id="supplies-dialog-title">키즈노트 당일 준비물</h2>
+      <div>
+        <h2 id="supplies-dialog-title">키즈노트</h2>
+        <time id="kidsnote-date" class="kidsnote-date" hidden></time>
+      </div>
       <form method="dialog">
         <button type="submit" class="dialog-close-btn" autofocus>닫기</button>
       </form>
     </div>
     <div class="dialog-body">
-      <p id="supplies-dialog-status" role="status"></p>
-      <ol id="supplies-list" class="supplies-list" hidden></ol>
-      <section id="kidsnote-bulletins" aria-labelledby="kidsnote-bulletins-title" hidden>
-        <h3 id="kidsnote-bulletins-title">다가오는 일정과 안내</h3>
-        <ol id="kidsnote-bulletin-list" class="supplies-list"></ol>
-      </section>
-      <a id="supplies-dialog-login" href="./api/supplies/login" hidden>가족 보드 로그인</a>
+      <div id="supplies-dialog-status" class="kidsnote-status" role="status">
+        <strong id="kidsnote-state"></strong>
+        <p id="kidsnote-status-note" hidden></p>
+        <p id="kidsnote-guidance" hidden></p>
+      </div>
+      <a id="supplies-dialog-login" class="kidsnote-login" href="./api/supplies/login" hidden>가족 보드 로그인</a>
+      <div class="kidsnote-sections">
+        <section class="kidsnote-section" id="kidsnote-preparation" aria-labelledby="kidsnote-preparation-title" hidden>
+          <h3 id="kidsnote-preparation-title">준비물</h3>
+          <h4 id="kidsnote-today-title" hidden>오늘 챙길 물품</h4>
+          <ul id="supplies-list" class="kidsnote-list" aria-labelledby="kidsnote-today-title" hidden></ul>
+          <h4 id="kidsnote-upcoming-title" hidden>예정된 준비</h4>
+          <ul id="kidsnote-upcoming-list" class="kidsnote-list" aria-labelledby="kidsnote-upcoming-title" hidden></ul>
+        </section>
+        <section class="kidsnote-section" id="kidsnote-events" aria-labelledby="kidsnote-events-title" hidden>
+          <h3 id="kidsnote-events-title">일정</h3>
+          <ul id="kidsnote-events-list" class="kidsnote-list" aria-labelledby="kidsnote-events-title"></ul>
+        </section>
+        <section class="kidsnote-section" id="kidsnote-information" aria-labelledby="kidsnote-information-title" hidden>
+          <h3 id="kidsnote-information-title">특이사항</h3>
+          <ul id="kidsnote-information-list" class="kidsnote-list" aria-labelledby="kidsnote-information-title"></ul>
+        </section>
+      </div>
     </div>
   </dialog>
 
-  <script type="module" src="./app.js?release=v13"></script>
-  <script type="module" src="./supplies.js?release=v13"></script>
+  <script type="module" src="./app.js?release=v14"></script>
+  <script type="module" src="./supplies.js?release=v14"></script>
 </body>
 </html>

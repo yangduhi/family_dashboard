@@ -97,7 +97,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             page.wait_for_function("navigator.serviceWorker.controller !== null")
             status = page.locator("#supplies-status")
             button = page.get_by_role("button", name="키즈노트", exact=True)
-            dialog = page.get_by_role("dialog", name="키즈노트 당일 준비물")
+            dialog = page.get_by_role("dialog", name="키즈노트", exact=True)
             expect(status).to_contain_text("전체 20개")
             expect(button).to_be_enabled()
             expect(button).to_have_accessible_description("오늘 표시할 준비물이 있습니다. 상세 내용을 확인해 주세요.")
@@ -205,6 +205,57 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                     expect(dialog.locator("#supplies-list")).to_be_hidden()
                     dialog.get_by_role("button", name="닫기").tap()
                     expect(button).to_be_focused()
+
+            bulletin = {"status": "VERIFIED", "date": "2026-11-24", "detail": "10시 시작",
+                        "sourceDate": "2026-11-20"}
+            response.update(json={**fixture, "items": fixture["items"][:1], "bulletins": [
+                {**bulletin, "kind": "EVENT", "title": "인형극"},
+                {**bulletin, "kind": "INFORMATION", "title": "출입구 변경", "date": None,
+                 "status": "REVIEW_REQUIRED", "detail": "등원 시 정문 이용"},
+                {**bulletin, "kind": "PREPARATION", "title": "체험 활동 준비", "detail": "여벌 옷 지참"},
+                {**bulletin, "kind": "EVENT", "title": "산책", "date": "2026-11-23"},
+            ]})
+            page.clock.fast_forward(31000)
+            expect(status).to_contain_text("전체 1개")
+            button.tap()
+            preparation = dialog.get_by_role("region", name="준비물", exact=True)
+            events = dialog.get_by_role("region", name="일정", exact=True)
+            information = dialog.get_by_role("region", name="특이사항", exact=True)
+            expect(dialog.locator("#kidsnote-date")).to_have_attribute("datetime", fixture["targetDate"])
+            expect(dialog.get_by_role("status")).to_contain_text("오늘 준비물 1개")
+            expect(dialog).to_have_css("font-family", re.compile(r'^"Pretendard Variable",'))
+            expect(preparation.get_by_role("heading", name="준비물", exact=True)).to_have_css("font-weight", "700")
+            note = information.get_by_text("등원 시 정문 이용")
+            expect(note).to_have_css("font-weight", "400")
+            assert note.evaluate("el => parseFloat(getComputedStyle(el).letterSpacing) / parseFloat(getComputedStyle(el).fontSize)") == -0.02
+            expect(preparation.get_by_role("list", name="오늘 챙길 물품")).to_contain_text("1개")
+            expect(preparation.get_by_role("list", name="예정된 준비")).to_contain_text("여벌 옷 지참")
+            expect(events.get_by_role("listitem").first).to_contain_text("산책")
+            expect(events.get_by_role("listitem").last.locator("time")).to_have_attribute("datetime", "2026-11-24")
+            expect(information.get_by_role("listitem")).to_contain_text("확인 필요")
+            expect(information.get_by_role("listitem")).to_contain_text("등원 시 정문 이용")
+            assert preparation.bounding_box()["y"] == events.bounding_box()["y"] == information.bounding_box()["y"]
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "kidsnote-categories-landscape.png")
+            page.set_viewport_size({"width": 800, "height": 1280})
+            assert preparation.bounding_box()["y"] < events.bounding_box()["y"] < information.bounding_box()["y"]
+            if screenshot_dir:
+                page.screenshot(path=Path(screenshot_dir) / "kidsnote-categories-portrait.png")
+            page.set_viewport_size({"width": 390, "height": 500})
+            body = dialog.locator(".dialog-body")
+            assert body.evaluate("el => el.scrollWidth === el.clientWidth && el.scrollHeight > el.clientHeight")
+            box = body.bounding_box()
+            x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] - 20
+            cdp = ctx.new_cdp_session(page)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+            for delta in range(20, 141, 20):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": y - delta}]})
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("document.querySelector('#supplies-dialog .dialog-body').scrollTop > 0", timeout=3000)
+            page.keyboard.press("Escape")
+            expect(dialog).to_be_hidden()
+            expect(button).to_be_focused()
+            page.set_viewport_size({"width": 1280, "height": 800})
 
             response.update(json={**fixture, "items": [], "state": "NEEDS_REVIEW",
                                   "complete": False, "reasonCode": "NO_RESULT_EVIDENCE",
