@@ -404,28 +404,28 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             calendar.get_by_role("button", name="닫기").press("Enter")
             expect(calendar_button).to_be_focused()
 
-            glove = {"date": "2026-11-24", "title": "김장 활동", "audience": "INCLUDES_ONE",
-                     "preparations": [{"label": "어린이 위생장갑", "dueDate": "2026-11-24"}]}
-            verified = {"date": glove["date"], "title": "어린이 위생장갑", "sourceDate": "2026-11-20",
-                        "detail": "김장 활동에 사용", "kind": "PREPARATION", "status": "VERIFIED"}
+            activity = {"date": "2026-11-25", "title": "미술 놀이", "audience": "INCLUDES_ONE",
+                     "preparations": [{"label": "앞치마", "dueDate": "2026-11-25"}]}
+            verified = {"date": activity["date"], "title": "앞치마", "sourceDate": "2026-11-20",
+                        "detail": "미술 놀이에 사용", "kind": "PREPARATION", "status": "VERIFIED"}
             saturday = {"date": "2026-11-07", "title": "토요 놀이", "audience": "AGE_ONE"}
             sunday = {"date": "2026-11-08", "title": "일요 놀이", "audience": "INCLUDES_ONE"}
             response.update(json={**fixture, "weekPreparations": [verified],
                                   "monthlyCalendar": {"month": "2026-11", "status": "NEEDS_REVIEW",
-                                      "events": [*fixture["monthlyCalendar"]["events"], glove, saturday, sunday]},
+                                      "events": [*fixture["monthlyCalendar"]["events"], activity, saturday, sunday]},
                                   "nextMonthlyCalendar": {**december, "events": [
                                       museum, competition, {**saturday, "date": "2026-12-05"}, {**sunday, "date": "2026-12-06"}]}})
             page.clock.fast_forward(31000)
-            glove_day = dialog.locator("#week-days > li").filter(has_text="어린이 위생장갑")
-            expect(glove_day).to_contain_text("제출일 2026-11-24")
-            expect(glove_day).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
+            supply_day = dialog.locator("#week-days > li").filter(has_text="앞치마")
+            expect(supply_day).to_contain_text("제출일 2026-11-25")
+            expect(supply_day).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
             calendar_button.tap()
             expect(calendar.locator("#calendar-status")).to_be_hidden()
             expect(calendar.locator(".calendar-event")).to_have_count(8)
-            glove_row = calendar.locator(".calendar-event").filter(has_text="김장 활동")
-            expect(glove_row).to_contain_text("어린이 위생장갑")
-            expect(glove_row).to_contain_text("제출일 2026-11-24")
-            expect(glove_row).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
+            activity_row = calendar.locator(".calendar-event").filter(has_text="미술 놀이")
+            expect(activity_row).to_contain_text("앞치마")
+            expect(activity_row).to_contain_text("제출일 2026-11-25")
+            expect(activity_row).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
             expect(calendar.locator(".calendar-event").filter(has_text="은빛반 미술 활동")).to_contain_text("대상 미확인")
             for month, control in [(11, november_button), (12, december_button)]:
                 control.tap()
