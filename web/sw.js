@@ -1,5 +1,5 @@
 const CACHE_PREFIX = `family-dashboard:${self.registration.scope}:`;
-const CACHE_VERSION = "v14";
+const CACHE_VERSION = "v16";
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const SHELL_ASSETS = [
   "./",

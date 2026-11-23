@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Pretendard Offline";
-  src: url("./fonts/PretendardVariable.woff2?release=v14") format("woff2");
+  src: url("./fonts/PretendardVariable.woff2?release=v16") format("woff2");
   font-weight: 45 920;
   font-style: normal;
   font-display: swap;
@@ -503,7 +503,7 @@ svg {
 }
 
 .tomorrow-range > div { text-align: center; }
-.tomorrow-range dt { color: var(--ink-muted); font-size: 10px; }
+.tomorrow-range dt { color: var(--ink-muted); font-size: 11px; }
 .tomorrow-range dd {
   margin: 0;
   font-size: 16px;
@@ -516,21 +516,57 @@ svg {
 .tomorrow-range[hidden] { display: none; }
 
 .weather-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px 10px;
+  gap: 6px 8px;
   border-block-start: 1px solid var(--card-border);
-  padding-block-start: 6px;
+  padding-block-start: 4px;
 }
 
-.weather-tip-bar {
+.commute-forecast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--weather-muted-bg);
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.commute-forecast h2 {
   margin: 0;
-  min-inline-size: 0;
+  margin-inline-end: auto;
+  color: var(--ink-main);
+  font-size: 13px;
+}
+
+.commute-forecast span { white-space: nowrap; }
+.commute-forecast strong {
+  color: var(--ink-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-alert-link {
+  pointer-events: auto;
+  touch-action: manipulation;
+  display: grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 6px;
   color: var(--tip-ink);
-  font-size: clamp(12px, 1.55dvh, 14px);
-  word-break: keep-all;
-  overflow-wrap: anywhere;
+}
+
+.weather-alert-link:is(:hover, :focus-visible) { background: var(--weather-muted-bg); }
+.weather-alert-link:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+
+@media (max-width: 460px) {
+  .weather-footer { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+  .weather-footer .air-badge { grid-column: 1 / -1; justify-self: start; }
 }
 
 /* Discreet Parent Lock Trigger (3.0s continuous hold) */
@@ -1839,8 +1875,7 @@ html[data-theme="babyshark"] :is(.theme-option-btn.is-selected, .media-pool-them
   }
   .tomorrow-range { gap: 5px; }
   .weather-current { flex-wrap: wrap; gap: 2px 6px; }
-  .weather-footer { flex-wrap: wrap; }
-  .progress-band { grid-template-columns: minmax(0, 1fr) auto; }
+    .progress-band { grid-template-columns: minmax(0, 1fr) auto; }
   .countdown-box { min-inline-size: 0; }
   .track-area { grid-column: 1 / -1; grid-row: 2; }
 }

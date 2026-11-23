@@ -1,5 +1,5 @@
-import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v14";
-import { createStampAudio } from "./stamp-audio.js?release=v14";
+import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v16";
+import { createStampAudio } from "./stamp-audio.js?release=v16";
 import {
   buildMediaRecordId,
   buildStepMediaSelection,
@@ -14,7 +14,7 @@ import {
   parseZipEntries,
   putMediaItems,
   STEP_IDS,
-} from "./media_store.js?release=v14";
+} from "./media_store.js?release=v16";
 
 export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;
@@ -26,6 +26,7 @@ const STAMP_SETTLE_MS = 320;
 const WEATHER_CACHE_KEY = "family_dashboard_weather_cache_v2";
 const SEOUL_WEATHER_DATE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", dateStyle: "short" });
 const WEATHER_HOURS = [9, 12, 15, 18];
+const COMMUTE_HOURS = [9, 16];
 const WEATHER_CACHE_MAX_MS = 3 * 60 * 60 * 1000;
 const CURRENT_MAX_MS = 60 * 60 * 1000;
 const SEOUL_LONG_DATE = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric",
@@ -192,37 +193,6 @@ export function computeCountdown(nowDate, prepStartTime, departureTime) {
   };
 }
 
-export function buildWeatherTip(tempC, minTempC, maxTempC, precipProb, pm25) {
-  const t = Number.isFinite(tempC) ? Math.round(tempC) : null;
-  const rain = Number.isFinite(precipProb) ? Math.round(precipProb) : null;
-  const dust = Number.isFinite(pm25) ? Math.round(pm25) : null;
-
-  let outfit = `포근한 ${t}° — 가벼운 등원복 좋아요`;
-  if (t <= 4) {
-    outfit = `현재 ${t}° 추워요 — 따뜻한 패딩·목도리 챙기기`;
-  } else if (t <= 11) {
-    outfit = `현재 ${t}° 쌀쌀 — 아이 겉옷 챙기기`;
-  } else if (t <= 18) {
-    outfit = `선선한 ${t}° — 얇은 가디건·긴팔 추천`;
-  } else if (t >= 26) {
-    outfit = `더운 ${t}° — 시원한 옷·물병·모자 챙기기`;
-  }
-
-  let umbrella = "";
-  if (rain !== null && rain < 30) umbrella = `강수확률 최대 ${rain}%`;
-  if (rain >= 55) {
-    umbrella = `강수확률 최대 ${rain}% — 우산·장화 챙기기`;
-  } else if (rain >= 30) {
-    umbrella = `강수확률 최대 ${rain}% — 접이식 우산 챙기면 안심`;
-  }
-
-  const parts = [t === null ? "" : outfit, umbrella];
-  if (dust > 35) {
-    parts.push("미세먼지 주의 — 마스크 챙기기");
-  }
-  return parts.filter(Boolean).join(" · ");
-}
-
 const WEATHER_CODES = [
   [[0], "☀️", "맑음"],
   [[1, 2], "⛅", "구름 조금"],
@@ -265,19 +235,24 @@ function datedForecast(daily, date) {
 
 function forecastSnapshot(payload, now) {
   const date = SEOUL_WEATHER_DATE.format(now);
-  const times = Array.isArray(payload.hourly?.time) ? payload.hourly.time : [];
-  const hourly = WEATHER_HOURS.map(hour =>
-    payload.hourly?.temperature_2m?.[times.indexOf(`${date}T${String(hour).padStart(2, "0")}:00`)] ?? null);
-  const probabilities = Array.from({length:12}, (_, index) =>
-    payload.hourly?.precipitation_probability?.[times.indexOf(`${date}T${String(index + 7).padStart(2, "0")}:00`)]);
+  const hours = payload.hourly;
+  const times = Array.isArray(hours?.time) ? hours.time : [];
+  const hourIndex = hour => times.indexOf(`${date}T${String(hour).padStart(2, "0")}:00`);
+  const commute = Object.fromEntries(COMMUTE_HOURS.map(hour => {
+    const index = hourIndex(hour);
+    const rain = hours?.precipitation_probability?.[index];
+    return [hour, {
+      feelsLike: hours?.apparent_temperature?.[index],
+      rain: Number.isFinite(rain) && rain >= 0 && rain <= 100 ? rain : null,
+    }];
+  }));
   return {
     date, fetchedAt: now, measuredAt: seoulMeasurementTime(payload.current?.time),
     tempC: payload.current?.temperature_2m, weatherCode: payload.current?.weather_code,
     daily: datedForecast(payload.daily, date),
     tomorrow: datedForecast(payload.daily, SEOUL_WEATHER_DATE.format(now + 86_400_000)),
-    hourly,
-    precipProb: probabilities.every(value => Number.isFinite(value) && value >= 0 && value <= 100)
-      ? Math.max(...probabilities) : null,
+    hourly: WEATHER_HOURS.map(hour => hours?.temperature_2m?.[hourIndex(hour)] ?? null),
+    commute,
   };
 }
 
@@ -451,7 +426,10 @@ function initDashboardApp() {
     tomorrowCondition: document.getElementById("tomorrow-condition"),
     tomorrowRange: document.getElementById("tomorrow-range"),
     hourlyStrip: document.getElementById("hourly-strip"),
-    weatherTipBar: document.getElementById("weather-tip-bar"),
+    commuteForecasts: [...document.querySelectorAll(".commute-forecast")].map(card => ({
+      feelsLike: card.querySelector("[data-feels]"),
+      rain: card.querySelector("[data-rain]"),
+    })),
     countdownLabel: document.getElementById("countdown-label"),
     countdownValue: document.getElementById("countdown-value"),
     cheerBubble: document.getElementById("cheer-bubble"),
@@ -828,8 +806,13 @@ function initDashboardApp() {
       const temp = today?.hourly?.[index];
       cell.lastElementChild.textContent = Number.isFinite(temp) ? `${Math.round(temp)}°` : "—";
     }
-    const advice = buildWeatherTip(current?.tempC, daily?.min, daily?.max, today?.precipProb, measured?.pm25);
-    els.weatherTipBar.textContent = advice || (weatherPending ? "날씨 정보를 확인하고 있어요" : "등원 날씨 정보가 부족해요");
+    const temperature = value => Number.isFinite(value) ? `${Math.round(value)}°C` : "미확인";
+    for (const [index, hour] of COMMUTE_HOURS.entries()) {
+      const forecast = today?.commute?.[hour];
+      const card = els.commuteForecasts[index];
+      card.feelsLike.textContent = temperature(forecast?.feelsLike);
+      card.rain.textContent = Number.isFinite(forecast?.rain) ? `${Math.round(forecast.rain)}%` : "미확인";
+    }
   }
 
   function renderProgress() {
@@ -1158,7 +1141,7 @@ function initDashboardApp() {
     const { lat, lon } = state.location;
     const forecastUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=temperature_2m,weather_code&hourly=temperature_2m,precipitation_probability` +
+      `&current=temperature_2m,weather_code&hourly=temperature_2m,apparent_temperature,precipitation_probability` +
       `&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia%2FSeoul&forecast_days=2`;
     const airUrl =
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +

@@ -79,6 +79,8 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 ctx = browser.new_context(viewport={"width": width, "height": height}, has_touch=True,
                                           service_workers="allow", timezone_id="Asia/Seoul")
                 ctx.route("https://**/*", lambda route: route.abort())
+                warning_url = "https://www.weather.go.kr/w/special-report/overall.do"
+                ctx.route(warning_url, lambda route: route.fulfill(content_type="text/html", body="<h1>특보</h1>"))
                 private_requests = []
                 ctx.on("request", lambda request: private_requests.append(request.url)
                        if "/api/supplies/" in request.url else None)
@@ -87,6 +89,10 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 page.goto(origin)
                 page.wait_for_function("navigator.serviceWorker.controller !== null")
                 expect(page.locator("#cards-grid .step-card")).to_have_count(4)
+                with page.expect_popup() as warning:
+                    page.get_by_role("link", name="기상청 특보 서울동남권").tap()
+                warning.value.wait_for_url(warning_url)
+                warning.value.close()
                 expect(page.locator("#supplies-button")).to_be_hidden()
                 expect(page.locator("#calendar-button")).to_be_hidden()
                 expect(page.locator("#calendar-dialog")).to_be_hidden()
@@ -158,8 +164,9 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
                 "current": {"time": "2026-11-21T07:00", "temperature_2m": 9, "weather_code": 0},
                 "daily": {"time": ["2026-11-21", "2026-11-22"], "weather_code": [0, 3],
                           "temperature_2m_min": [6, -2], "temperature_2m_max": [13, 8]},
-                "hourly": {"time": ["2026-11-21T09:00", "2026-11-22T09:00"],
-                           "temperature_2m": [10, 25], "precipitation_probability": [0, 99]},
+                "hourly": {"time": ["2026-11-21T09:00", "2026-11-21T16:00", "2026-11-22T09:00"],
+                           "temperature_2m": [10, 13, 25], "apparent_temperature": [8, 11, 24],
+                           "precipitation_probability": [0, 80, 99]},
             }))
             ctx.route("https://air-quality-api.open-meteo.com/**", lambda route: route.fulfill(json={}))
             ctx.route(endpoint, lambda route: route.fulfill(headers={"Cache-Control": "no-store"}, **response))
@@ -206,7 +213,14 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(page.locator("#tomorrow-high")).to_have_text("8°")
             expect(page.locator("#hourly-strip strong").nth(1)).to_have_text("—")
             expect(page.locator("#air-grade")).to_have_text("확인 불가")
-            expect(page.locator("#weather-tip-bar")).not_to_contain_text("우산 필요 없어요")
+            expect(page.locator("#commute-09")).to_have_text("등원 체감 8°C 강수 0%")
+            expect(page.locator("#commute-16")).to_have_text("하원 체감 11°C 강수 80%")
+            expect(page.locator(".weather-footer")).not_to_contain_text("상일동")
+            expect(page.locator(".weather-zone")).not_to_contain_text("겉옷 챙기기")
+            warning = page.get_by_role("link", name="기상청 특보 서울동남권")
+            expect(warning).to_have_attribute("href", "https://www.weather.go.kr/w/special-report/overall.do")
+            expect(warning).to_have_text("")
+            expect(warning.locator("svg")).to_be_visible()
             expect(page.locator("#hourly-strip strong").first).to_have_text("10°")
             assert button.locator("img").evaluate("el => el.complete && el.naturalWidth > 0")
             sizes = page.evaluate("""() => {
@@ -1066,7 +1080,9 @@ def test_weather_partial_forecast_and_older_cache(tmp_path):
                 "current": {"time": "2026-11-21T07:00", "temperature_2m": 7, "weather_code": 42},
                 "daily": {"time": ["2026-11-22", "2026-11-21"], "weather_code": [42, 3],
                           "temperature_2m_min": [-8, 2], "temperature_2m_max": [None, 6]},
-                "hourly": {"time": ["2026-11-22T09:00"], "temperature_2m": [77]},
+                "hourly": {"time": ["2026-11-22T09:00", "2026-11-21T16:00"],
+                           "temperature_2m": [77, 4], "apparent_temperature": [70, 0],
+                           "precipitation_probability": [90, 101]},
             }))
             page = ctx.new_page()
             page.clock.install(time=datetime(2026, 11, 20, 22, 5, tzinfo=timezone.utc))
@@ -1079,6 +1095,8 @@ def test_weather_partial_forecast_and_older_cache(tmp_path):
             expect(page.locator("#tomorrow-high")).to_have_text("—")
             expect(page.locator("#tomorrow-condition")).to_have_text("날씨 미확인")
             expect(page.locator("#hourly-strip strong").first).to_have_text("—")
+            expect(page.locator("#commute-09")).to_have_text("등원 체감 미확인 강수 미확인")
+            expect(page.locator("#commute-16")).to_have_text("하원 체감 0°C 강수 미확인")
             expect(page.locator("#air-grade")).to_have_text("확인 불가")
 
             ctx.unroute("https://api.open-meteo.com/**")
@@ -1086,9 +1104,11 @@ def test_weather_partial_forecast_and_older_cache(tmp_path):
             expect(page.locator("#weather-source")).to_have_text("저장된 예보")
             expect(page.locator("#weather-source")).to_be_visible()
             expect(page.locator("#tomorrow-low")).to_have_text("-8°")
+            expect(page.locator("#commute-16 [data-feels]")).to_have_text("0°C")
             page.clock.fast_forward(3 * 60 * 60 * 1000 + 1000)
             expect(page.locator("#tomorrow-range")).to_be_hidden()
             expect(page.locator("#weather-temp")).to_be_hidden()
+            expect(page.locator("#commute-16 [data-feels]")).to_have_text("미확인")
             expect(page.locator("#tomorrow-condition")).to_have_text("예보 확인 불가")
             browser.close()
     finally:

@@ -252,7 +252,6 @@ import {{
   applyStamp,
   undoLastStamp,
   computeCountdown,
-  buildWeatherTip,
   resolveUploadedImageMime,
   resolveThemeMascotUrl,
   resolveThemeStampUrl,
@@ -318,11 +317,6 @@ const c2 = computeCountdown(new Date(2026, 10, 18, 9, 5, 0), '07:50', '08:50');
 assert.equal(c2.remainingMinutes, 0);
 assert.equal(c2.timeProgressPct, 100);
 assert.equal(c2.isPastDeparture, true);
-
-// 4. Weather tip generation
-const tipColdRain = buildWeatherTip(7, 5, 11, 70, 20);
-assert.ok(tipColdRain.includes('겉옷'));
-assert.ok(tipColdRain.includes('우산'));
 
 // 5. Media path classification & collision-free IDs
 const cPororo = classifyMediaPath('pororo_morning_60/webp/pororo/breakfast_01.webp');
