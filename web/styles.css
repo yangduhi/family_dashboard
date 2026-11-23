@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Pretendard Offline";
-  src: url("./fonts/PretendardVariable.woff2?release=v18") format("woff2");
+  src: url("./fonts/PretendardVariable.woff2?release=v19") format("woff2");
   font-weight: 45 920;
   font-style: normal;
   font-display: swap;
@@ -33,6 +33,7 @@
   --weather-card-bg: #fff6cd;
   --weather-muted-bg: #f8edbd;
   --clock-mascot-outline: #724b21;
+  --clock-surface: #fed719;
   --accent-primary: #875500;
   --accent-secondary: #ffca28;
   --accent-cta: linear-gradient(180deg, #ffd54f 0%, #ffb300 100%);
@@ -60,6 +61,7 @@
   --weather-card-bg: #e6f4ff;
   --weather-muted-bg: #d5eafb;
   --clock-mascot-outline: #2a5177;
+  --clock-surface: #007ec6;
   --accent-primary: #1e88e5;
   --accent-secondary: #ff7043;
   --accent-cta: linear-gradient(180deg, #ff9800 0%, #f57c00 100%);
@@ -172,6 +174,79 @@ svg {
   align-items: center;
   gap: clamp(10px, 1.2dvw, 16px);
   min-inline-size: 0;
+}
+
+#clock-home { position: relative; flex: none; }
+
+#clock-expand {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  inline-size: max(44px, 40%);
+  aspect-ratio: 1;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: zoom-in;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#clock-expand:focus-visible, #clock-expand.is-holding {
+  outline: 3px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+#clock-dialog {
+  box-sizing: border-box;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  inline-size: 100dvw;
+  block-size: 100dvh;
+  max-inline-size: none;
+  max-block-size: none;
+  background: var(--clock-surface);
+  color: var(--ink-main);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+#clock-dialog[open] { display: grid; place-items: center; }
+#clock-dialog::backdrop { background: var(--card-bg); }
+#clock-dialog .clock-face {
+  inline-size: min(92dvw, 94dvh);
+}
+@media (orientation: landscape) {
+  #clock-dialog .clock-face {
+    inline-size: min(94dvh, calc(100dvw - 2 * (72px + env(safe-area-inset-right))));
+  }
+}
+@media (orientation: portrait) {
+  #clock-dialog .clock-face {
+    inline-size: min(92dvw, calc(100dvh - 2 * (60px + env(safe-area-inset-top))));
+  }
+}
+#clock-dialog .clock-number { font-size: 8cqi; }
+#clock-dialog .header-mascot { opacity: 1; }
+#clock-dialog .header-mascot > * {
+  filter: drop-shadow(2px 0 var(--clock-mascot-outline)) drop-shadow(-2px 0 var(--clock-mascot-outline))
+    drop-shadow(0 2px var(--clock-mascot-outline)) drop-shadow(0 -2px var(--clock-mascot-outline));
+}
+#clock-dialog .clock-hand { box-shadow: 0 0 0 1px rgb(255 255 255 / 85%); }
+#clock-dialog .clock-hour { inline-size: 1.7cqi; }
+#clock-dialog .clock-minute { inline-size: 1cqi; }
+#clock-dialog .clock-second { inline-size: .42cqi; }
+#clock-dialog .clock-pin { inline-size: 2.6cqi; block-size: 2.6cqi; }
+#clock-close {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: max(12px, env(safe-area-inset-top));
+  inset-inline-end: max(12px, env(safe-area-inset-right));
+  min-inline-size: 56px;
+  min-block-size: 44px;
 }
 
 .clock-face {

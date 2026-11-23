@@ -1,5 +1,5 @@
-import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v18";
-import { createStampAudio } from "./stamp-audio.js?release=v18";
+import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v19";
+import { createStampAudio } from "./stamp-audio.js?release=v19";
 import {
   buildMediaRecordId,
   buildStepMediaSelection,
@@ -14,7 +14,7 @@ import {
   parseZipEntries,
   putMediaItems,
   STEP_IDS,
-} from "./media_store.js?release=v18";
+} from "./media_store.js?release=v19";
 
 export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;
@@ -340,6 +340,97 @@ function readFileAsDataUrl(file, errorMessage) {
 
 export function resolveUploadedImageMime(file) {
   return String(file?.type || getImageMimeType(file?.name) || "").toLowerCase();
+}
+
+function setupClockExpansion(face) {
+  const home = document.getElementById("clock-home");
+  const trigger = document.getElementById("clock-expand");
+  const dialog = document.getElementById("clock-dialog");
+  const close = document.getElementById("clock-close");
+  const root = document.documentElement;
+  let pointer = null;
+  let hold = 0;
+  let requestedFullscreen = false;
+  let historyClosing = false;
+
+  function cancelHold() {
+    clearTimeout(hold);
+    const captured = pointer;
+    pointer = null;
+    trigger.classList.remove("is-holding");
+    if (captured !== null && trigger.hasPointerCapture(captured)) trigger.releasePointerCapture(captured);
+  }
+
+  function openClock() {
+    cancelHold();
+    if (dialog.open || historyClosing || document.querySelector("dialog[open]")) return;
+    dialog.append(face);
+    dialog.showModal();
+    close.focus({ preventScroll: true });
+    if (!history.state?.expandedClock) {
+      history.pushState({ ...history.state, expandedClock: true }, "");
+    }
+    // An installed PWA or the parent's fullscreen board already fills the screen.
+    if (!document.fullscreenElement && !matchMedia("(display-mode: fullscreen)").matches && root.requestFullscreen) {
+      requestedFullscreen = true;
+      root.requestFullscreen().then(() => {
+        if (!dialog.open && document.fullscreenElement === root) document.exitFullscreen().catch(() => {});
+      }).catch(() => { requestedFullscreen = false; });
+    }
+  }
+
+  function closeClock() {
+    if (dialog.open) dialog.close();
+  }
+
+  function insideCircle(event) {
+    const rect = trigger.getBoundingClientRect();
+    return Math.hypot(event.clientX - rect.left - rect.width / 2,
+      event.clientY - rect.top - rect.height / 2) <= rect.width / 2;
+  }
+  window.addEventListener("pointerdown", (event) => {
+    if (pointer !== null && event.pointerId !== pointer) cancelHold();
+  }, true);
+  trigger.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0 || !insideCircle(event)) return;
+    event.preventDefault();
+    pointer = event.pointerId;
+    trigger.setPointerCapture(pointer);
+    trigger.classList.add("is-holding");
+    hold = setTimeout(openClock, 650);
+  });
+  trigger.addEventListener("pointermove", (event) => {
+    if (event.pointerId === pointer && !insideCircle(event)) cancelHold();
+  });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    trigger.addEventListener(type, (event) => { if (event.pointerId === pointer) cancelHold(); });
+  }
+  window.addEventListener("blur", cancelHold);
+  window.addEventListener("resize", cancelHold);
+  window.addEventListener("pagehide", cancelHold);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) cancelHold(); });
+  trigger.addEventListener("contextmenu", (event) => event.preventDefault());
+  trigger.addEventListener("click", (event) => { if (event.detail === 0) openClock(); });
+  close.addEventListener("click", closeClock);
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); closeClock(); });
+  window.addEventListener("popstate", () => {
+    historyClosing = false;
+    if (!history.state?.expandedClock) closeClock();
+    else openClock();
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if (requestedFullscreen && !document.fullscreenElement) closeClock();
+  });
+  dialog.addEventListener("close", () => {
+    home.insertBefore(face, trigger);
+    if (requestedFullscreen && document.fullscreenElement === root) document.exitFullscreen().catch(() => {});
+    requestedFullscreen = false;
+    trigger.focus({ preventScroll: true });
+    if (history.state?.expandedClock) {
+      historyClosing = true;
+      history.back();
+    }
+  });
 }
 
 async function resizeUploadedImage(file) {
@@ -1309,6 +1400,8 @@ function initDashboardApp() {
     });
     renderAll();
   }
+
+  setupClockExpansion(els.clockFace);
 
   /* ---------- Event Wiring ---------- */
   // Strict child-lock guards on the main canvas

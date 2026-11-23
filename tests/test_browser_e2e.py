@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import math
+import os
 import re
 import threading
 import zipfile
@@ -69,6 +71,202 @@ def _open_parent_dialog_by_touch(page) -> None:
         {"x": lx, "y": ly},
     )
     expect(dialog).to_have_attribute("open", "")
+
+
+def _check_clock_touch(page, trigger, dialog):
+    touch = page.context.new_cdp_session(page)
+    box = trigger.bounding_box()
+    point = {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2, "id": 1}
+
+    def send(kind, *points):
+        touch.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": list(points)})
+
+    for interruption in ("short", "cancel", "leave", "second finger", "blur", "resize", "hidden"):
+        send("touchStart", point)
+        page.clock.run_for(100)
+        if interruption == "short":
+            send("touchEnd")
+        elif interruption == "cancel":
+            send("touchCancel")
+        elif interruption == "leave":
+            send("touchMove", {**point, "x": box["x"] + box["width"] + 35})
+        elif interruption == "second finger":
+            send("touchStart", point, {**point, "x": point["x"] + 12, "id": 2})
+        elif interruption == "blur":
+            page.evaluate("window.dispatchEvent(new Event('blur'))")
+        elif interruption == "resize":
+            page.evaluate("window.dispatchEvent(new Event('resize'))")
+        else:
+            page.evaluate("""() => {
+              Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+              Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+              document.dispatchEvent(new Event('visibilitychange'));
+            }""")
+        page.clock.run_for(700)
+        expect(dialog).to_be_hidden()
+        if interruption not in ("short", "cancel"):
+            send("touchEnd")
+        if interruption == "hidden":
+            page.evaluate("""() => {
+              delete document.hidden; delete document.visibilityState;
+              document.dispatchEvent(new Event('visibilitychange'));
+            }""")
+        expect(dialog).to_be_hidden()
+
+    send("touchStart", point)
+    page.clock.run_for(649)
+    expect(dialog).to_be_hidden()
+    page.clock.run_for(1)
+    expect(dialog).to_be_visible()
+    send("touchEnd")
+    expect(dialog).to_be_visible()
+    touch.detach()
+
+
+def _check_expanded_clock(page, face, dialog):
+    rect = face.bounding_box()
+    width, height = page.viewport_size["width"], page.viewport_size["height"]
+    assert abs(rect["width"] - rect["height"]) <= 1
+    assert min(width, height) * 0.5 < rect["width"] <= min(width, height)
+    assert 0 <= rect["x"] and rect["x"] + rect["width"] <= width + 1
+    assert 0 <= rect["y"] and rect["y"] + rect["height"] <= height + 1
+    cx, cy = rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2
+    close = dialog.get_by_role("button", name="닫기", exact=True)
+    expect(close).to_be_in_viewport(ratio=1)
+    close_box = close.bounding_box()
+    assert min(close_box["width"], close_box["height"]) >= 44
+    boxes = [close_box]
+    numbers = face.locator(".clock-number")
+    expect(numbers).to_have_text([str(i) for i in range(1, 13)])
+    for hour, number in enumerate(numbers.all(), 1):
+        box = number.bounding_box()
+        x, y = box["x"] + box["width"] / 2 - cx, box["y"] + box["height"] / 2 - cy
+        angle = math.radians(30 * hour)
+        radius = math.hypot(x, y)
+        assert rect["width"] * .33 < radius < rect["width"] * .48
+        assert abs(x / radius - math.sin(angle)) < .04 and abs(y / radius + math.cos(angle)) < .04
+        assert rect["x"] <= box["x"] and box["x"] + box["width"] <= rect["x"] + rect["width"]
+        assert rect["y"] <= box["y"] and box["y"] + box["height"] <= rect["y"] + rect["height"]
+        for other in boxes:
+            assert (box["x"] >= other["x"] + other["width"] or other["x"] >= box["x"] + box["width"]
+                    or box["y"] >= other["y"] + other["height"] or other["y"] >= box["y"] + box["height"]), hour
+        boxes.append(box)
+
+    lengths = []
+    for name in ("hour", "minute", "second"):
+        hand = face.locator(".clock-" + name)
+        length, degrees = hand.evaluate("el => [el.offsetHeight, parseFloat(getComputedStyle(el).rotate)]")
+        lengths.append(length)
+        box = hand.bounding_box()
+        angle = math.radians(degrees)
+        assert abs(box["x"] + box["width"] / 2 - cx - length * math.sin(angle) / 2) < 2
+        assert abs(box["y"] + box["height"] / 2 - cy + length * math.cos(angle) / 2) < 2
+    assert 0 < lengths[0] < lengths[1] <= lengths[2] < rect["height"] / 2
+
+
+def test_clock_expansion_gestures_focus_art_and_layout(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    srv = start_server(root / "web", store={"items": []}, state_file=tmp_path / "state.json", port=0)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            for theme in ("babyshark", "pororo"):
+                page = browser.new_page(viewport={"width": 1280, "height": 800}, has_touch=True, timezone_id="Asia/Seoul")
+                page.route("https://**/*", lambda route: route.abort())
+                page.route("**/api/state", lambda route: route.fulfill(status=404))
+                custom = "data:image/png;base64," + base64.b64encode(TINY_PNG_BYTES).decode()
+                if theme == "pororo":
+                    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="24"/></svg>'
+                    custom = "data:image/svg+xml;base64," + base64.b64encode(svg).decode()
+                seed = {"theme": theme, "customImages": {f"mascot_{theme}": custom}}
+                page.add_init_script(f"localStorage.setItem('family_dashboard_state_v1', JSON.stringify({json.dumps(seed)}))")
+                page.clock.install(time=datetime(2026, 11, 23, 1, 8, tzinfo=timezone.utc))
+                page.clock.pause_at(datetime(2026, 11, 23, 1, 9, tzinfo=timezone.utc))
+                page.goto(f"http://127.0.0.1:{srv.server_port}/")
+                expect(page.locator("html")).to_have_attribute("data-theme", theme)
+                face, trigger, dialog = [page.locator("#" + id_) for id_ in ("clock-face", "clock-expand", "clock-dialog")]
+                expect(trigger).to_have_accessible_name("시계 크게 보기")
+                expect(trigger).to_have_attribute("aria-haspopup", "dialog")
+                expect(trigger).to_have_attribute("aria-controls", "clock-dialog")
+                original = face.element_handle()
+                assert trigger.evaluate("(el, face) => el.tagName === 'BUTTON' && el.parentElement === face.parentElement", original)
+                expect(face).to_have_attribute("role", "img")
+                if theme == "babyshark":
+                    page.evaluate("""() => {
+                      Element.prototype.requestFullscreen = async () => {
+                        window.clockFullscreenDenied = true;
+                        throw new DOMException('Denied', 'NotAllowedError');
+                      };
+                    }""")
+                page.evaluate("""() => {
+                    const set = window.setInterval;
+                    window.newClockIntervals = 0;
+                    window.setInterval = (...args) => {
+                        if (args[1] === 1000) window.newClockIntervals++;
+                        return set(...args);
+                    };
+                }""")
+                for width, height in [(1280, 800), (800, 1280), (390, 844)]:
+                    page.set_viewport_size({"width": width, "height": height})
+                    page.clock.run_for(50)
+                    expect(face.locator("#header-mascot img")).to_have_attribute("src", custom)
+                    box = trigger.bounding_box()
+                    assert min(box["width"], box["height"]) >= 44
+                    already_fullscreen = theme == "pororo" and width == 390
+                    if already_fullscreen:
+                        page.evaluate("document.documentElement.requestFullscreen()")
+                    if theme == "babyshark" and width == 1280:
+                        _check_clock_touch(page, trigger, dialog)
+                    else:
+                        trigger.press("Space" if width == 800 else "Enter")
+                    expect(dialog).to_be_visible()
+                    assert dialog.evaluate("(el, face) => el.contains(face) && document.querySelectorAll('#clock-face').length === 1", original)
+                    close = dialog.get_by_role("button", name="닫기", exact=True)
+                    expect(close).to_be_focused()
+                    if theme == "babyshark":
+                        assert page.evaluate("window.clockFullscreenDenied && !document.fullscreenElement")
+                    else:
+                        page.wait_for_function("document.fullscreenElement === document.documentElement")
+                    assert dialog.bounding_box() == {"x": 0, "y": 0, "width": width, "height": height}
+                    art = dialog.locator("#header-mascot img")
+                    expect(art).to_be_visible()
+                    expect(art).to_have_attribute("src", custom)
+                    assert art.evaluate("async el => { await el.decode(); return el.naturalWidth > 0; }")
+                    background = "rgb(254, 215, 25)" if theme == "babyshark" else "rgb(0, 126, 198)"
+                    expect(dialog).to_have_css("background-color", background)
+                    assert "drop-shadow" in art.evaluate("el => getComputedStyle(el).filter")
+                    before = face.locator(".clock-second").evaluate("el => getComputedStyle(el).rotate")
+                    page.clock.run_for(1000)
+                    assert face.locator(".clock-second").evaluate("el => getComputedStyle(el).rotate") != before
+                    _check_expanded_clock(page, face, dialog)
+                    if directory := os.getenv("FAMILY_CLOCK_SCREENSHOT_DIR"):
+                        page.screenshot(path=Path(directory) / f"clock-{theme}-{width}x{height}.png")
+                    if width == 1280:
+                        close.tap()
+                    elif width == 800:
+                        page.evaluate("history.back()")
+                    else:
+                        close.press("Escape")
+                    expect(dialog).to_be_hidden()
+                    page.clock.run_for(50)
+                    expect(trigger).to_be_focused()
+                    expect(page.locator(".clock-zone #clock-home > #clock-face")).to_have_count(1)
+                    assert face.evaluate("(el, original) => el === original", original)
+                    expect(face.locator("#header-mascot img")).to_have_attribute("src", custom)
+                    page.wait_for_function("!history.state?.expandedClock")
+                    if already_fullscreen:
+                        assert page.evaluate("document.fullscreenElement === document.documentElement")
+                        page.evaluate("document.exitFullscreen()")
+                    page.wait_for_function("!document.fullscreenElement")
+                assert page.evaluate("window.newClockIntervals") == 0
+                page.close()
+            browser.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        thread.join(timeout=2)
 
 
 def test_browser_child_lock_touch_holds_and_theme_persistence(tmp_path: Path) -> None:
