@@ -1,5 +1,5 @@
-import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v16";
-import { createStampAudio } from "./stamp-audio.js?release=v16";
+import { DAYCARE_SVG, FIXED_LOCATION, STEP_ILLUSTRATIONS, STEP_META, THEMES } from "./assets.js?release=v17";
+import { createStampAudio } from "./stamp-audio.js?release=v17";
 import {
   buildMediaRecordId,
   buildStepMediaSelection,
@@ -14,7 +14,7 @@ import {
   parseZipEntries,
   putMediaItems,
   STEP_IDS,
-} from "./media_store.js?release=v16";
+} from "./media_store.js?release=v17";
 
 export const UNDO_HOLD_MS = 1500;
 export const PARENT_HOLD_MS = 3000;

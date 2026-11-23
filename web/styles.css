@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Pretendard Offline";
-  src: url("./fonts/PretendardVariable.woff2?release=v16") format("woff2");
+  src: url("./fonts/PretendardVariable.woff2?release=v17") format("woff2");
   font-weight: 45 920;
   font-style: normal;
   font-display: swap;
@@ -517,7 +517,7 @@ svg {
 
 .weather-footer {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   align-items: center;
   gap: 6px 8px;
   border-block-start: 1px solid var(--card-border);
@@ -527,6 +527,8 @@ svg {
 .commute-forecast {
   display: flex;
   flex-wrap: wrap;
+  align-self: stretch;
+  align-content: center;
   align-items: baseline;
   gap: 2px 8px;
   padding: 4px 8px;
@@ -550,22 +552,8 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 
-.weather-alert-link {
-  pointer-events: auto;
-  touch-action: manipulation;
-  display: grid;
-  place-items: center;
-  inline-size: 44px;
-  block-size: 44px;
-  border-radius: 6px;
-  color: var(--tip-ink);
-}
-
-.weather-alert-link:is(:hover, :focus-visible) { background: var(--weather-muted-bg); }
-.weather-alert-link:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
-
 @media (max-width: 460px) {
-  .weather-footer { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+  .weather-footer { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .weather-footer .air-badge { grid-column: 1 / -1; justify-self: start; }
 }
 

@@ -79,8 +79,6 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 ctx = browser.new_context(viewport={"width": width, "height": height}, has_touch=True,
                                           service_workers="allow", timezone_id="Asia/Seoul")
                 ctx.route("https://**/*", lambda route: route.abort())
-                warning_url = "https://www.weather.go.kr/w/special-report/overall.do"
-                ctx.route(warning_url, lambda route: route.fulfill(content_type="text/html", body="<h1>특보</h1>"))
                 private_requests = []
                 ctx.on("request", lambda request: private_requests.append(request.url)
                        if "/api/supplies/" in request.url else None)
@@ -89,10 +87,6 @@ def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path)
                 page.goto(origin)
                 page.wait_for_function("navigator.serviceWorker.controller !== null")
                 expect(page.locator("#cards-grid .step-card")).to_have_count(4)
-                with page.expect_popup() as warning:
-                    page.get_by_role("link", name="기상청 특보 서울동남권").tap()
-                warning.value.wait_for_url(warning_url)
-                warning.value.close()
                 expect(page.locator("#supplies-button")).to_be_hidden()
                 expect(page.locator("#calendar-button")).to_be_hidden()
                 expect(page.locator("#calendar-dialog")).to_be_hidden()
@@ -217,10 +211,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(page.locator("#commute-16")).to_have_text("하원 체감 11°C 강수 80%")
             expect(page.locator(".weather-footer")).not_to_contain_text("상일동")
             expect(page.locator(".weather-zone")).not_to_contain_text("겉옷 챙기기")
-            warning = page.get_by_role("link", name="기상청 특보 서울동남권")
-            expect(warning).to_have_attribute("href", "https://www.weather.go.kr/w/special-report/overall.do")
-            expect(warning).to_have_text("")
-            expect(warning.locator("svg")).to_be_visible()
+            expect(page.locator(".weather-footer").get_by_role("link")).to_have_count(0)
             expect(page.locator("#hourly-strip strong").first).to_have_text("10°")
             assert button.locator("img").evaluate("el => el.complete && el.naturalWidth > 0")
             sizes = page.evaluate("""() => {
