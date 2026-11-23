@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -38,6 +38,33 @@ def assert_clock_numeral_positions(clock):
         for other_left, other_top, other_right, other_bottom in boxes:
             assert right < other_left or other_right < left or bottom < other_top or other_bottom < top, hour
         boxes.append((left, top, right, bottom))
+
+
+def assert_calendar_weekend_styles(calendar, mobile):
+    gray = "rgb(240, 241, 242)"
+    cells = calendar.locator("#calendar-days > li:visible").evaluate_all("""cells => cells.map(cell => {
+        const label = cell.querySelector('.calendar-date');
+        const rect = cell.getBoundingClientRect();
+        return {date: label.dateTime, bg: getComputedStyle(cell).backgroundColor,
+                labelBg: getComputedStyle(label).backgroundColor, x: rect.x, height: rect.height};
+    })""")
+    weekdays = set()
+    for cell in cells:
+        weekday = date.fromisoformat(cell["date"]).weekday()
+        weekdays.add(weekday)
+        assert (cell["bg"] == gray) == (weekday >= 5), cell
+        assert (cell["labelBg"] == gray) == (weekday >= 5), cell
+    assert {4, 5, 6} <= weekdays
+    assert calendar.evaluate("el => el.scrollWidth === el.clientWidth && el.querySelector('.dialog-body').scrollWidth === el.querySelector('.dialog-body').clientWidth")
+    headers = calendar.locator(".calendar-weekdays")
+    if mobile:
+        expect(headers).to_be_hidden()
+        assert len({cell["x"] for cell in cells}) == 1
+    else:
+        styles = headers.locator("span").evaluate_all("els => els.map(el => getComputedStyle(el).backgroundColor)")
+        assert [i for i, color in enumerate(styles) if color == gray] == [0, 6]
+        assert len({cell["x"] for cell in cells}) == 7
+        assert max(cell["height"] for cell in cells) - min(cell["height"] for cell in cells) <= 1
 
 
 def test_public_pages_shell_never_exposes_private_controls_or_requests(tmp_path):
@@ -137,7 +164,8 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             ctx.route("https://air-quality-api.open-meteo.com/**", lambda route: route.fulfill(json={}))
             ctx.route(endpoint, lambda route: route.fulfill(headers={"Cache-Control": "no-store"}, **response))
             page = ctx.new_page()
-            page.clock.install(time=datetime(2026, 11, 20, 22, tzinfo=timezone.utc))
+            page.clock.install(time=datetime(2026, 11, 20, 21, 59, tzinfo=timezone.utc))
+            page.clock.pause_at(datetime(2026, 11, 20, 22, tzinfo=timezone.utc))
             page.goto(origin)
             page.wait_for_function("navigator.serviceWorker.controller !== null")
             status = page.locator("#supplies-status")
@@ -167,6 +195,7 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(clock.locator(".clock-second")).to_have_css("background-color", "rgb(191, 24, 37)")
             page.clock.fast_forward(1000)
             assert clock.evaluate("el => el.style.getPropertyValue('--second-angle')") == "6deg"
+            page.clock.resume()
             expect(page.locator(".weather-zone #date-pill")).to_have_text("2026년 11월 21일 토요일")
             expect(page.locator(".weather-zone #date-pill")).to_have_attribute("datetime", "2026-11-21")
             expect(page.locator("#weather-cond")).not_to_contain_text("상일동")
@@ -375,11 +404,47 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             calendar.get_by_role("button", name="닫기").press("Enter")
             expect(calendar_button).to_be_focused()
 
-            calendar_button.tap()
-            response.update(json={**fixture, "monthlyCalendar": {**fixture["monthlyCalendar"], "status": "NEEDS_REVIEW"}})
+            glove = {"date": "2026-11-24", "title": "김장 활동", "audience": "INCLUDES_ONE",
+                     "preparations": [{"label": "어린이 위생장갑", "dueDate": "2026-11-24"}]}
+            verified = {"date": glove["date"], "title": "어린이 위생장갑", "sourceDate": "2026-11-20",
+                        "detail": "김장 활동에 사용", "kind": "PREPARATION", "status": "VERIFIED"}
+            saturday = {"date": "2026-11-07", "title": "토요 놀이", "audience": "AGE_ONE"}
+            sunday = {"date": "2026-11-08", "title": "일요 놀이", "audience": "INCLUDES_ONE"}
+            response.update(json={**fixture, "weekPreparations": [verified],
+                                  "monthlyCalendar": {"month": "2026-11", "status": "NEEDS_REVIEW",
+                                      "events": [*fixture["monthlyCalendar"]["events"], glove, saturday, sunday]},
+                                  "nextMonthlyCalendar": {**december, "events": [
+                                      museum, competition, {**saturday, "date": "2026-12-05"}, {**sunday, "date": "2026-12-06"}]}})
             page.clock.fast_forward(31000)
-            expect(calendar.get_by_role("status")).to_have_text("일정표 확인 필요")
-            expect(calendar.locator(".calendar-event")).to_have_count(5)
+            glove_day = dialog.locator("#week-days > li").filter(has_text="어린이 위생장갑")
+            expect(glove_day).to_contain_text("제출일 2026-11-24")
+            expect(glove_day).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
+            calendar_button.tap()
+            expect(calendar.locator("#calendar-status")).to_be_hidden()
+            expect(calendar.locator(".calendar-event")).to_have_count(8)
+            glove_row = calendar.locator(".calendar-event").filter(has_text="김장 활동")
+            expect(glove_row).to_contain_text("어린이 위생장갑")
+            expect(glove_row).to_contain_text("제출일 2026-11-24")
+            expect(glove_row).not_to_contain_text(re.compile("확인 필요|제출일 미확인"))
+            expect(calendar.locator(".calendar-event").filter(has_text="은빛반 미술 활동")).to_contain_text("대상 미확인")
+            for month, control in [(11, november_button), (12, december_button)]:
+                control.tap()
+                for width, height in [(1280, 800), (390, 844)]:
+                    page.set_viewport_size({"width": width, "height": height})
+                    assert_calendar_weekend_styles(calendar, width == 390)
+                    for title, label, color in [("토요 놀이", "만 1세 전용", colors[0]), ("일요 놀이", "만 1세 포함", colors[1])]:
+                        event = calendar.locator(".calendar-event").filter(has_text=title)
+                        expect(event).to_contain_text(label)
+                        expect(event).to_have_css("background-color", color)
+                    if screenshot_dir:
+                        page.screenshot(path=Path(screenshot_dir) / f"calendar-weekends-{month}-{width}x{height}.png")
+            page.set_viewport_size({"width": 1280, "height": 800})
+            november_button.tap()
+            for state, message in [("NEEDS_REVIEW", "아직 확인된 행사가 없습니다"), ("AVAILABLE", "등록된 행사 없음")]:
+                response.update(json={**fixture, "monthlyCalendar": {"month": "2026-11", "status": state, "events": []}})
+                page.clock.fast_forward(31000)
+                expect(calendar.get_by_role("status")).to_have_text(message)
+                expect(calendar.locator(".calendar-event")).to_have_count(0)
             response.update(json={**fixture, "monthlyCalendar": {"month": "2026-11", "status": "PENDING", "events": []}})
             page.clock.fast_forward(31000)
             expect(calendar.get_by_role("status")).to_have_text("월간 일정표 갱신 대기")
@@ -580,6 +645,11 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             button.tap()
             expect(dialog.get_by_role("status")).to_contain_text("보호자가 키즈노트 인증을 확인해 주세요")
             expect(dialog.get_by_role("link", name="가족 보드 로그인")).to_be_hidden()
+            calendar_button.tap()
+            expect(calendar.get_by_role("status")).to_have_text("키즈노트 재인증 필요")
+            expect(calendar_days).to_have_count(0)
+            expect(calendar.locator("#calendar-months")).to_be_hidden()
+            page.keyboard.press("Escape")
             page.keyboard.press("Escape")
 
             response.update(json={**fixture, "items": [], "state": "NEEDS_REVIEW",

@@ -1310,6 +1310,12 @@ dialog:is(.parent-dialog, .supplies-dialog)::backdrop {
   background: white;
 }
 .calendar-date { display: block; font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-weekdays .calendar-weekend { border-radius: 4px; }
+.calendar-weekdays .calendar-weekend,
+#calendar-days > .calendar-weekend,
+#calendar-days > .calendar-weekend > .calendar-date {
+  background-color: #f0f1f2;
+}
 .calendar-count { align-self: center; color: var(--ink-muted); font-size: .8125rem; }
 .calendar-events {
   grid-column: 1 / -1;
@@ -1357,6 +1363,7 @@ dialog:is(.parent-dialog, .supplies-dialog)::backdrop {
   .calendar-weekdays, .calendar-day-number, #calendar-days > li:not(:has(.calendar-event)) { display: none; }
   #calendar-days { display: flex; flex-direction: column; gap: 12px; }
   #calendar-days > li { display: block; padding: 0; border: 0; background: transparent; }
+  #calendar-days > .calendar-weekend { padding: 4px 6px; }
   .calendar-events { overflow: visible; }
   .calendar-count { display: none; }
   .calendar-day-long { display: inline; }

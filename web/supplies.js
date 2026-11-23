@@ -266,7 +266,7 @@ function start() {
     const calendar = monthOffset === 0 ? data?.monthlyCalendar : data?.nextMonthlyCalendar;
     calendarButton.hidden = !data;
     calendarContent.hidden = !calendar || calendar.status === "PENDING";
-    calendarMonths.hidden = !data;
+    calendarMonths.hidden = !data || data.state === "AUTH_REQUIRED";
     monthButtons.forEach((control, offset) => {
       control.textContent = "";
       if (data) {
@@ -276,10 +276,16 @@ function start() {
       control.setAttribute("aria-pressed", String(offset === monthOffset));
     });
     let message = "월간 일정표 미확인";
-    if (!data) message = labelFor(null, mode);
-    if (calendar) {
-      message = { AVAILABLE: "", NEEDS_REVIEW: "일정표 확인 필요", PENDING: "월간 일정표 갱신 대기" }[calendar.status];
-      if (calendar.status === "AVAILABLE" && !calendar.events.length) message = "등록된 행사 없음";
+    if (!data) {
+      message = labelFor(null, mode);
+    } else if (data.state === "AUTH_REQUIRED") {
+      message = states.AUTH_REQUIRED;
+    } else if (calendar) {
+      message = "";
+      if (calendar.status === "PENDING") message = "월간 일정표 갱신 대기";
+      else if (!calendar.events.length) {
+        message = calendar.status === "AVAILABLE" ? "등록된 행사 없음" : "아직 확인된 행사가 없습니다";
+      }
       if (mode === "stale") message = [message, "이전 확인 결과"].filter(Boolean).join(" · ");
     }
     calendarStatus.hidden = !message;
@@ -300,7 +306,9 @@ function start() {
     while (day.getUTCMonth() === monthIndex) {
       const value = day.toISOString().slice(0, 10);
       const cell = document.createElement("li");
-      if (day.getUTCDate() === 1) cell.style.gridColumnStart = String(day.getUTCDay() + 1);
+      const dayOfWeek = day.getUTCDay();
+      if (day.getUTCDate() === 1) cell.style.gridColumnStart = String(dayOfWeek + 1);
+      if (dayOfWeek === 0 || dayOfWeek === 6) cell.classList.add("calendar-weekend");
       const time = textElement("time", "", "calendar-date");
       time.dateTime = value;
       time.setAttribute("aria-label", fullDate.format(day));
@@ -450,8 +458,8 @@ function start() {
         if (duration < 0 || kst.format(new Date(serverTime)) !== data.targetDate) return update(null, "connect");
         observedServerTime = serverTime;
         observedClientTime = receivedAt;
-        if (!validateMonthlyCalendar(data.monthlyCalendar, data.targetDate)) delete data.monthlyCalendar;
-        if (!validateMonthlyCalendar(data.nextMonthlyCalendar, data.targetDate, 1)) delete data.nextMonthlyCalendar;
+        if (data.state === "AUTH_REQUIRED" || !validateMonthlyCalendar(data.monthlyCalendar, data.targetDate)) delete data.monthlyCalendar;
+        if (data.state === "AUTH_REQUIRED" || !validateMonthlyCalendar(data.nextMonthlyCalendar, data.targetDate, 1)) delete data.nextMonthlyCalendar;
         update(data, "result");
       }
     } catch {
