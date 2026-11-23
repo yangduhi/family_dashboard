@@ -1,6 +1,6 @@
 @font-face {
   font-family: "Pretendard Offline";
-  src: url("./fonts/PretendardVariable.woff2?release=v17") format("woff2");
+  src: url("./fonts/PretendardVariable.woff2?release=v18") format("woff2");
   font-weight: 45 920;
   font-style: normal;
   font-display: swap;
@@ -11,6 +11,7 @@
   --ink-main: #2d2520;
   --ink-muted: #5f574f;
   --ink-subtle: #8c8277;
+  --rain-ink: #15527a;
   --radius-xl: 22px;
   --radius-lg: 16px;
   --radius-md: 12px;
@@ -323,6 +324,7 @@ svg {
 
 .weather-zone {
   grid-area: weather;
+  container-type: inline-size;
   justify-self: end;
   inline-size: min(100%, 630px);
   background: var(--weather-card-bg);
@@ -344,23 +346,38 @@ svg {
 }
 
 .air-badge {
-  --air-ink: #226238;
+  --air-ink: var(--ink-muted);
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 4px 7px;
-  border-radius: 6px;
-  background: var(--weather-muted-bg);
   color: var(--ink-main);
   font-size: 11px;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 
+.air-badge.good { --air-ink: #226238; }
 .air-badge.moderate { --air-ink: #15527a; }
 .air-badge.bad { --air-ink: #8a3c10; }
 .air-badge.very-bad { --air-ink: #9a2330; }
-.air-badge strong { color: var(--air-ink); }
+.air-badge strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--air-ink) 12%, var(--weather-card-bg));
+  color: var(--air-ink);
+  font-size: 12px;
+}
+.air-badge:is(.good, .moderate, .bad, .very-bad) strong::before {
+  content: "";
+  inline-size: 5px;
+  block-size: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
 .air-badge-reading {
   border-inline-start: 1px solid var(--card-border);
   padding-inline-start: 5px;
@@ -525,36 +542,64 @@ svg {
 }
 
 .commute-forecast {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(2rem, 1fr) 5rem 3.75rem;
   align-self: stretch;
   align-content: center;
-  align-items: baseline;
-  gap: 2px 8px;
+  align-items: center;
+  gap: 2px 6px;
   padding: 4px 8px;
   border-radius: 6px;
   background: var(--weather-muted-bg);
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
 .commute-forecast h2 {
   margin: 0;
-  margin-inline-end: auto;
   color: var(--ink-main);
   font-size: 13px;
 }
 
-.commute-forecast span { white-space: nowrap; }
+.commute-metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
 .commute-forecast strong {
   color: var(--ink-main);
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
+.commute-rain {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  padding-inline-start: 5px;
+  border-inline-start: 1px solid var(--card-border);
+  color: var(--rain-ink);
+  text-align: end;
+}
+.commute-rain strong { color: inherit; }
 
-@media (max-width: 460px) {
+@container (max-width: 570px) {
   .weather-footer { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .weather-footer .air-badge { grid-column: 1 / -1; justify-self: start; }
+  .commute-forecast { grid-template-columns: minmax(0, 1fr) 3.75rem; }
+  .commute-forecast h2 { grid-column: 1 / -1; }
+  .commute-metric:not(.commute-rain) { justify-content: flex-start; }
+}
+
+@container (max-width: 270px) {
+  .commute-forecast { grid-template-columns: minmax(0, 1fr); }
+  .commute-rain {
+    grid-template-columns: 14px auto;
+    justify-content: start;
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
 }
 
 /* Discreet Parent Lock Trigger (3.0s continuous hold) */

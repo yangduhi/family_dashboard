@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#ffeb3b">
   <meta name="family-dashboard-shell" content="2">
-  <meta name="family-dashboard-release" content="v17">
+  <meta name="family-dashboard-release" content="v18">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>어린이집 등원 준비 가족 대시보드</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" crossorigin="anonymous" referrerpolicy="no-referrer" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="./styles.css?release=v17">
+  <link rel="stylesheet" href="./styles.css?release=v18">
 </head>
 <body>
   <div class="scenic-layer" aria-hidden="true">
@@ -92,13 +92,25 @@
         <div class="weather-footer">
           <section class="commute-forecast" id="commute-09" aria-labelledby="commute-arrival">
             <h2 id="commute-arrival">등원</h2>
-            <span>체감 <strong data-feels>미확인</strong></span>
-            <span>강수 <strong data-rain>미확인</strong></span>
+            <span class="commute-metric">체감 <strong data-feels>미확인</strong></span>
+            <span class="commute-metric commute-rain">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                   stroke-width="1.6" role="img" aria-label="강수확률">
+                <path d="M8 2.5C6 5.1 4 7.2 4 9.6a4 4 0 0 0 8 0C12 7.2 10 5.1 8 2.5Z"/>
+              </svg>
+              <strong data-rain>미확인</strong>
+            </span>
           </section>
           <section class="commute-forecast" id="commute-16" aria-labelledby="commute-departure">
             <h2 id="commute-departure">하원</h2>
-            <span>체감 <strong data-feels>미확인</strong></span>
-            <span>강수 <strong data-rain>미확인</strong></span>
+            <span class="commute-metric">체감 <strong data-feels>미확인</strong></span>
+            <span class="commute-metric commute-rain">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                   stroke-width="1.6" role="img" aria-label="강수확률">
+                <path d="M8 2.5C6 5.1 4 7.2 4 9.6a4 4 0 0 0 8 0C12 7.2 10 5.1 8 2.5Z"/>
+              </svg>
+              <strong data-rain>미확인</strong>
+            </span>
           </section>
           <div class="air-badge" id="air-badge">
             <span>미세먼지</span>
@@ -124,7 +136,7 @@
         </button>
         <button type="button" class="supplies-button" id="supplies-button" aria-label="키즈노트"
           aria-haspopup="dialog" aria-controls="supplies-dialog" hidden>
-          <img src="./kidsnote_app_icon.svg?release=v17" alt="" width="36" height="36">
+          <img src="./kidsnote_app_icon.svg?release=v18" alt="" width="36" height="36">
         </button>
       </div>
     </header>
@@ -369,7 +381,7 @@
     </div>
   </dialog>
 
-  <script type="module" src="./app.js?release=v17"></script>
-  <script type="module" src="./supplies.js?release=v17"></script>
+  <script type="module" src="./app.js?release=v18"></script>
+  <script type="module" src="./supplies.js?release=v18"></script>
 </body>
 </html>
