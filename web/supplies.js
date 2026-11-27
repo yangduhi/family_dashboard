@@ -103,11 +103,17 @@ function textElement(tag, text, className) {
   return element;
 }
 
-// targetDate is already a Seoul calendar date. UTC arithmetic keeps device time zones out.
-export function schoolWeek(targetDate) {
+const seoulHour = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Seoul", hour: "2-digit", hourCycle: "h23",
+});
+
+// targetDate and serverTime refer to the same Seoul day.
+export function schoolWeek(targetDate, serverTime) {
   const day = new Date(targetDate + "T00:00:00Z");
   const mondayOffset = (day.getUTCDay() + 6) % 7;
-  day.setUTCDate(day.getUTCDate() - mondayOffset + (mondayOffset >= 5 ? 7 : 0));
+  const nextWeek = mondayOffset >= 5 ||
+    (mondayOffset === 4 && Number(seoulHour.format(serverTime)) >= 20);
+  day.setUTCDate(day.getUTCDate() - mondayOffset + (nextWeek ? 7 : 0));
   return Array.from({ length: 5 }, () => {
     const value = day.toISOString().slice(0, 10);
     day.setUTCDate(day.getUTCDate() + 1);
@@ -240,15 +246,17 @@ function start() {
   let suspended = false;
   let activeRequest;
   let observedServerTime = 0;
+  let observedWeekTime = 0;
   let observedClientTime = 0;
+  let displayedMonday;
 
-  function renderWeek(data) {
+  function renderWeek(data, dates = data ? schoolWeek(data.targetDate, observedWeekTime) : []) {
+    displayedMonday = dates[0];
     week.hidden = !data;
     weekDays.replaceChildren();
     const reviewList = document.getElementById("week-review-list");
     reviewList.replaceChildren();
     if (!data) return;
-    const dates = schoolWeek(data.targetDate);
     const notices = (data.weekPreparations ?? data.bulletins ?? []).filter(row =>
       row.kind === "PREPARATION" && dates.includes(row.date));
     const activities = [data.monthlyCalendar, data.nextMonthlyCalendar].flatMap(month => month?.events ?? [])
@@ -412,10 +420,14 @@ function start() {
   function expireDate() {
     if (!current) return;
     const elapsed = Date.now() - observedClientTime;
-    if (elapsed < 0 || kst.format(new Date(observedServerTime + elapsed)) !== current.targetDate) {
+    const serverTime = observedServerTime + elapsed;
+    if (elapsed < 0 || kst.format(new Date(serverTime)) !== current.targetDate) {
       update(null, "connect");
       refresh();
+      return;
     }
+    const dates = schoolWeek(current.targetDate, observedWeekTime + elapsed);
+    if (dates[0] !== displayedMonday) renderWeek(current, dates);
   }
 
   function onConnectionFailure() {
@@ -453,9 +465,12 @@ function start() {
         const receivedAt = Date.now();
         const duration = receivedAt - startedAt;
         // Upper bound the server time to avoid accepting a result in flight across midnight.
-        const previousEstimate = observedServerTime ? observedServerTime + Math.max(0, receivedAt - observedClientTime) : 0;
+        const elapsed = Math.max(0, receivedAt - observedClientTime);
+        const previousEstimate = observedServerTime ? observedServerTime + elapsed : 0;
         const serverTime = Math.max(Date.parse(data.serverNow) + duration, previousEstimate);
         if (duration < 0 || kst.format(new Date(serverTime)) !== data.targetDate) return update(null, "connect");
+        // Crossing 20:00 uses a lower bound so a slow request cannot advance the week early.
+        observedWeekTime = Math.max(Date.parse(data.serverNow), observedWeekTime ? observedWeekTime + elapsed : 0);
         observedServerTime = serverTime;
         observedClientTime = receivedAt;
         if (data.state === "AUTH_REQUIRED" || !validateMonthlyCalendar(data.monthlyCalendar, data.targetDate)) delete data.monthlyCalendar;

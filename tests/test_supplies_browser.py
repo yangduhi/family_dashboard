@@ -822,11 +822,11 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             year_page.keyboard.press("Escape")
             expect(year_page.locator("#supplies-button")).to_be_focused()
 
-            # Friday evening in Seoul becomes Saturday while the device still reads Friday.
-            year_end.update(targetDate="2027-01-01", serverNow="2027-01-01T14:59:40Z", state="NEEDS_REVIEW",
+            # The open board switches at 20:00 in Seoul while the device still reads Friday.
+            year_end.update(targetDate="2027-01-01", serverNow="2027-01-01T10:59:58Z", state="NEEDS_REVIEW",
                             complete=False, deadlineState="MISSED", checkedAt=None, publishedAt=None,
                             monthlyCalendar=year_end.pop("nextMonthlyCalendar"))
-            year_page.clock.set_system_time(datetime(2027, 1, 1, 14, 59, 40, tzinfo=timezone.utc))
+            year_page.clock.set_system_time(datetime(2027, 1, 1, 10, 59, 58, tzinfo=timezone.utc))
             year_page.reload()
             year_page.locator("#supplies-button").tap()
             expect(year_days.last.locator("time")).to_have_attribute("aria-current", "date")
@@ -834,6 +834,12 @@ def test_supplies_below_settings_with_service_worker_and_safe_fallbacks(tmp_path
             expect(year_days.last).not_to_contain_text("준비물 없음")
             expect(year_days.last).to_contain_text("어린이 위생장갑")
             expect(year_page.locator("#supplies-list li")).to_have_count(0)
+            year_page.clock.fast_forward(3000)
+            expect(year_days.first.locator("time")).to_have_attribute("datetime", "2027-01-04")
+            expect(year_days.last.locator("time")).to_have_attribute("datetime", "2027-01-08")
+            expect(year_page.locator("#kidsnote-date")).to_have_attribute("datetime", "2027-01-01")
+            expect(year_days.locator('[aria-current="date"]')).to_have_count(0)
+            year_page.clock.set_system_time(datetime(2027, 1, 1, 14, 59, 40, tzinfo=timezone.utc))
             year_end.update(targetDate="2027-01-02", serverNow="2027-01-01T15:00:11Z")
             year_page.clock.fast_forward(31000)
             expect(year_page.locator("#kidsnote-date")).to_have_attribute("datetime", "2027-01-02")

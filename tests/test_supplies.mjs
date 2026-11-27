@@ -24,10 +24,12 @@ test("calendar validation binds every event to the displayed Seoul month", () =>
 test("Seoul school weeks span Monday to Friday across the year boundary", () => {
   const week = ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01"];
   for (const target of week) {
-    assert.deepEqual(schoolWeek(target), week);
+    assert.deepEqual(schoolWeek(target, new Date(target + "T19:59:59+09:00")), week);
   }
+  const upcoming = ["2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08"];
+  assert.deepEqual(schoolWeek("2027-01-01", new Date("2027-01-01T11:00:00Z")), upcoming);
   for (const target of ["2027-01-02", "2027-01-03", "2027-01-04"]) {
-    assert.deepEqual(schoolWeek(target), ["2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08"]);
+    assert.deepEqual(schoolWeek(target, new Date(target + "T00:00:00+09:00")), upcoming);
   }
 });
 
